@@ -1,0 +1,6 @@
+/scripts/get_data.py
+/scripts/__pycache__
+/data/spa-eng.zip
+/models/sentencepiece_model.model
+/models/test2_model.pth
+/models/test_model.pth
