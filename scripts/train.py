@@ -4,12 +4,16 @@ import sentencepiece as spm
 import torch
 import random
 import time
+import gc
 
-batch_size = 64 # number of sequences per batch
-block_size = 256 # max length of sequence/characters per sequence
-max_iters = 5000 # number of iterations to train for
-eval_iters = 200 # iterations to evaluate model performance
-eval_interval = 250 # interval to evaluate model performance
+batch_size = 32 # number of sequences per batch
+block_size = 96 # max length of sequence/characters per sequence
+# max_iters = 2000 # number of iterations to train for
+# eval_iters = 200 # iterations to evaluate model performance
+# eval_interval = 250 # interval to evaluate model performance
+max_iters = 10 # number of iterations to train for
+eval_iters = 2 # iterations to evaluate model performance
+eval_interval = 2 # interval to evaluate model performance
 learning_rate = 3e-4
 n_embed = 384 # embedding dimension
 n_head = 6 # number of heads
@@ -18,6 +22,7 @@ n_layer = 6 # number of layers
 dropout = 0.2
 
 start_time = time.time()
+gc.collect()
 torch.cuda.empty_cache()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -33,7 +38,13 @@ print(f"Name of current CUDA device:{torch.cuda.get_device_name(cuda_id)}")
 """
     Split and Tokenize Data
 """
-data = preprocessing.tokenize(preprocessing.split_data())
+en_sp = spm.SentencePieceProcessor()
+en_sp.Load("models/sentencepiece_model_10k_english.model")
+
+es_sp = spm.SentencePieceProcessor()
+es_sp.Load("models/sentencepiece_model_16k_spanish.model")
+
+data = preprocessing.tokenize(preprocessing.split_data(), en_sp, es_sp, block_size)
 
 # Split proportions  
 train_percent = 0.8 
@@ -72,15 +83,15 @@ def get_batch(split):
       t = data[i:i+block_size][0][1]
       y_tensors.append(t)
 
-    for i in range(len(x_tensors)):
-      pad_size = max_len - x_tensors[i].shape[0]
+    # for i in range(len(x_tensors)):
+    #   pad_size = max_len - x_tensors[i].shape[0]
 
-      # Create pad tensor  
-      pad = torch.zeros(pad_size, dtype=torch.long)
+    #   # Create pad tensor  
+    #   pad = torch.zeros(pad_size, dtype=torch.long)
 
-      # Concatenate padding
-      x_tensors[i] = torch.cat([x_tensors[i], pad])
-      y_tensors[i] = torch.cat([y_tensors[i], pad])
+    #   # Concatenate padding
+    #   x_tensors[i] = torch.cat([x_tensors[i], pad])
+    #   y_tensors[i] = torch.cat([y_tensors[i], pad])
 
     x = torch.stack(x_tensors)      
     y = torch.stack(y_tensors)  
@@ -134,12 +145,22 @@ def train_model(m):
       print(f"Current memory usage: {current_memory / (1024 ** 2):.2f} MB")
       print(f"Peak memory usage: {peak_memory / (1024 ** 2):.2f} MB")
 
-      test_src = torch.tensor(sp.EncodeAsIds("Hello what is your name?"), dtype=torch.long, device=device)
+      test_src = torch.tensor(en_sp.EncodeAsIds("Hello what is your name?"), dtype=torch.long, device=device)
       test_src = torch.cat([torch.tensor([1], dtype=torch.long, device=device), test_src, torch.tensor([2], dtype=torch.long, device=device)]) 
-      print("Hello what is your name? : ", sp.DecodeIds(m.generate(test_src, 10).tolist()))
+
+      # Pad tensors if needed
+      if test_src.size(0) < block_size:
+        padding = torch.zeros(block_size - test_src.size(0), dtype=torch.long, device=device)
+        test_src = torch.cat([test_src, padding])
+
+      print("Hello what is your name? : ", es_sp.DecodeIds(m.generate(test_src, block_size).tolist()))
 
     # sample a batch of data
     xb, yb = get_batch('train')
+
+    # clears memory
+    gc.collect() 
+    torch.cuda.empty_cache()
 
     # evaluate the loss
     logits, loss = m.forward(xb, yb)
@@ -154,20 +175,18 @@ def train_model(m):
   print(f"Training time: {int(training_time_minutes)} minutes {int(training_time_seconds)} seconds")
 
   # save the model
-  torch.save(m.state_dict(), "models/test_model.pth")
+  torch.save(m.state_dict(), "models/model_two_tok.pth")
 
   torch.save({
       'model_state_dict': m.state_dict(),
       "epoch": iter,
       "optimizer_state_dict": optimizer.state_dict(),
       "loss": loss
-  }, "models/test2_model.pth")
+  }, "models/model_two_tok(1).pth")
 
 
-sp = spm.SentencePieceProcessor()
-sp.Load("models/sentencepiece_model.model")
-vocab_size_x = len(sp)
-vocab_size_y = len(sp)
+vocab_size_x = len(en_sp)
+vocab_size_y = len(es_sp)
 
 model = Transformer(n_embed, n_head, dropout, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
 train_model(model)

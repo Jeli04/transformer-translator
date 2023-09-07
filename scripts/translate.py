@@ -18,7 +18,7 @@ n_layer = 6 # number of layers
 dropout = 0.2
 
 sp = spm.SentencePieceProcessor()
-sp.Load("models/sentencepiece_model.model")
+sp.Load("models/sentencepiece_model_16k.model")
 vocab_size_x = len(sp)
 vocab_size_y = len(sp)
 
@@ -26,6 +26,25 @@ model = Transformer(n_embed, n_head, dropout, block_size, vocab_size_x, vocab_si
 checkpoint = torch.load("models/test_model.pth")
 model.load_state_dict(checkpoint)
 
-en = torch.tensor(sp.EncodeAsIds("Hello"), dtype=torch.long, device=device)
-print(model.generate(en, 10))
+en = torch.tensor(sp.EncodeAsIds("How are you?"), dtype=torch.long, device=device)
+es = torch.tensor(sp.EncodeAsIds("Cómo estás"), dtype=torch.long, device=device)
+
+print(en)
+print(es)
+
+bos = sp.bos_id()  
+eos = sp.eos_id()
+en = torch.cat([torch.tensor([bos], device=device), en, torch.tensor([eos], device=device)]) 
+
+len1 = en.size(0)
+len2 = 6
+
+# Pad tensors if needed
+if len1 < len2:
+    padding = torch.zeros(len2 - len1, device=device , dtype=torch.long)
+    en = torch.cat([en, padding])
+
+# print(en)
+
+print(sp.DecodeIds(model.generate(en, len2).tolist()))
 

@@ -41,21 +41,26 @@ def split_data():
     Tokenize function
     converts the array of pairs into tokens using sentencepiece
     if the pairs are not equal size pad up the smaller one wiht 0s
+
+    MODIFICATIONS
+    use two different tokenizers for each language
+    pad the size of the tokens to the block size
+    replace the vocab size in the transformer with the size of the tokenizer
 """
 
-def tokenize(data):
-    sp = spm.SentencePieceProcessor()
-    sp.Load("models/sentencepiece_model.model")
+def tokenize(data, en_tokenizer, es_tokenizer, block_size):
+    # sp = spm.SentencePieceProcessor()
+    # sp.Load("models/sentencepiece_model_16k.model")
 
     tokenized_data = []
 
     # Get BOS and EOS IDs
-    bos = sp.bos_id()  
-    eos = sp.eos_id()
+    bos = en_tokenizer.bos_id()  
+    eos = en_tokenizer.eos_id()
     
     for row in data:
-        en = torch.tensor(sp.EncodeAsIds(row[0]), dtype=torch.long)
-        es = torch.tensor(sp.EncodeAsIds(row[1]), dtype=torch.long)
+        en = torch.tensor(en_tokenizer.EncodeAsIds(row[0]), dtype=torch.long)
+        es = torch.tensor(es_tokenizer.EncodeAsIds(row[1]), dtype=torch.long)
 
         # Add BOS and EOS
         en = torch.cat([torch.tensor([bos]), en, torch.tensor([eos])]) 
@@ -65,12 +70,12 @@ def tokenize(data):
         len2 = es.size(0)
 
         # Pad tensors if needed
-        if len1 < len2:
-            padding = torch.zeros(len2 - len1, dtype=torch.long)
+        if len1 < block_size:
+            padding = torch.zeros(block_size - len1, dtype=torch.long)
             en = torch.cat([en, padding])
 
-        if len2 < len1:
-            padding = torch.zeros(len1 - len2, dtype=torch.long)
+        if len2 < block_size:
+            padding = torch.zeros(block_size - len2, dtype=torch.long)
             es = torch.cat([es, padding])
 
 
@@ -78,7 +83,13 @@ def tokenize(data):
 
     return tokenized_data
 
-# print(tokenize(split_data())[0])
-# sp = spm.SentencePieceProcessor()
-# sp.Load("models/sentencepiece_model.model")
-# print(torch.tensor(sp.EncodeAsIds("Hello what is your name?"), dtype=torch.long))
+# en_sp = spm.SentencePieceProcessor()
+# en_sp.Load("models/sentencepiece_model_10k_english.model")
+
+# es_sp = spm.SentencePieceProcessor()
+# es_sp.Load("models/sentencepiece_model_16k_spanish.model")
+
+
+# print(tokenize(split_data(), en_sp, es_sp, 256)[0]) # 0 is english
+# print(tokenize(split_data(), en_sp, es_sp, 256)[1]) # 1 is spanish
+# print(torch.tensor(es_sp.EncodeAsIds("como suele haber varias páginas web sobre cualquier tema, normalmente sólo le doy al botón de retroceso cuando entro en una página web que tiene anuncios en ventanas emergentes. simplemente voy a la siguiente página encontrada por google y espero encontrar algo menos irritante."), dtype=torch.long).size(0))

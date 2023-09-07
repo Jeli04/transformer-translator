@@ -272,40 +272,87 @@ class Transformer(nn.Module):
 
     """
     # the job of generate is to extend idx to be B by T+1, B by T+2 ....
-    def generate(self, src, max_new_tokens):
-        start = torch.tensor([1], dtype=torch.long, device=device)
-        length = max_new_tokens - 1
-        zeros = torch.zeros(length, dtype=torch.long, device=device)
-        target_input = torch.cat([start, zeros])
+    def generate(self, src, seq_len):
+        # start = torch.tensor([1], dtype=torch.long, device=device)
+        # length = max_new_tokens - 1
+        # zeros = torch.zeros(length, dtype=torch.long, device=device)
+        # target_input = torch.cat([start, zeros])
+
+        # self.dropout = 0 # turn off dropout
+
+        # self.eval() # put model in eval mode
+
+        # src = torch.stack([src])
+        # target_input = torch.stack([target_input])
+
+        # logits, loss, = self(src, target_input) # call forward
+        
+        # res = torch.tensor([0], dtype=torch.long, device=device).unsqueeze(0)
+        # # idx is (B, T) array of indicies in the current context
+        # for i in range(max_new_tokens):
+        #     # gets the predictions
+        #     # print(src.shape)
+        #     # print(target_input.shape)
+        #     # print(logits.shape)
+        #     # focus only on the last time step
+        #     # logits = logits[: , -1, :]  # becomes (B, C)
+        #     # apply softmax to normalize and get probabilities
+        #     probs = F.softmax(logits[i], dim=-1) # dim are (B, C)
+        #     # sample from distribution to get a single prediction for what char comes next
+        #     src_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+            
+        #     # append sampled index to the running sequence
+        #     res = torch.cat((res, src_next.unsqueeze(0)), dim=1) # (B, T+1)
+        # self.dropout = dropout # turn dropout back on
+        # print(res[0])
+        # return res[0]
 
         self.dropout = 0 # turn off dropout
 
         self.eval() # put model in eval mode
 
         src = torch.stack([src])
-        target_input = torch.stack([target_input])
+        src = self.token_embedding_table_x(src)
+        src = self.pos_enc(src)
+        enc_output = src
+        for encoder in self.encoder_layers:
+          enc_output = encoder(enc_output)
 
-        logits, loss, = self(src, target_input) # call forward
-        
-        res = torch.tensor([0], dtype=torch.long, device=device).unsqueeze(0)
-        # idx is (B, T) array of indicies in the current context
-        for i in range(max_new_tokens):
-            # gets the predictions
-            # print(src.shape)
-            # print(target_input.shape)
-            # print(logits.shape)
-            # focus only on the last time step
-            # logits = logits[: , -1, :]  # becomes (B, C)
-            # apply softmax to normalize and get probabilities
-            probs = F.softmax(logits[i], dim=-1) # dim are (B, C)
-            # sample from distribution to get a single prediction for what char comes next
-            src_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+        print(enc_output.shape)
+
+        target = torch.zeros(seq_len).long().to(device)
+        target[0] = 1   # set the first token to be the start token
+        target = torch.stack([target])
+        target_len = 0
+
+        for i in range(1, seq_len):
+            target_embed = self.token_embedding_table_y(target)
+            target_enc = self.pos_enc(target_embed)
+
+            # print(target_enc.shape)
+
+            dec_output = target_enc
+            for decoder in self.decoder_layers:
+                dec_output = decoder(target_enc)
+                dec_output = self.sa_heads(dec_output, enc_output, enc_output)
+
+
+            res = F.softmax(dec_output, dim=-1)
+            res = torch.argmax(res, dim=-1) # (1, L)
+
+            # print(res[0][i-1])
+
+            last_word_id = res[0][i-1].item()
             
-            # append sampled index to the running sequence
-            res = torch.cat((res, src_next.unsqueeze(0)), dim=1) # (B, T+1)
+            if last_word_id == 2:
+                break
+
+            target[0][i] = last_word_id
+            target_len = i
+
+        print(target[0])
         self.dropout = dropout # turn dropout back on
-        print(res[0])
-        return res[0]
+        return target
 
 
 # import sentencepiece as spm
