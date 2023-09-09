@@ -77,13 +77,17 @@ class MultiHeadAttention(nn.Module):
             wei = q @ k.transpose(-2, -1) * C **-0.5  # C is head size
 
             if mask!=None:
-                wei = wei.masked_fill(mask==0, 0) # mask out the upper triangle (B, T, T)
+                wei = wei.masked_fill(mask[:T, :T]==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
 
             wei = F.softmax(wei, dim=-1)  # normalize
 
             out = wei @ v
 
-            out = out.transpose(1, 2).contiguous().view(B,T,C)  # re-assemble all head outputs side by side after spliting into batches (97-99)
+            out = out.transpose(1, 2).contiguous().view(B,T,C)  # re-assemble all head outputs side by side after spliting into batches
+
+            # if mask==None: print("Encoder: ")
+            # else: print("Decoder: ")
+            # print(out)
 
         out = self.dropout(self.proj(out))
         return out
@@ -111,7 +115,7 @@ class FeedForward(nn.Module):
     Input:
         Positional Encoding of data (English words)
     Output:
-        Masked Multi Head Attention prediction
+        Cross Attention output
 """
 class Decoder(nn.Module):
     def __init__(self, n_embed, n_head, block_size, dropout):
@@ -123,13 +127,21 @@ class Decoder(nn.Module):
 
         self.sa_heads = MultiHeadAttention(n_head, n_embed, dropout)
         self.ln1 = nn.LayerNorm(n_embed)
+        self.cross_attention = MultiHeadAttention(n_head, n_embed, dropout) 
+        self.ln2 = nn.LayerNorm(n_embed)
+        self.ffwd = FeedForward(n_embed, dropout)
+        self.ln3 = nn.LayerNorm(n_embed)
 
-    def forward(self, x):
+    def forward(self, x, enc_output):
         B, T, C= x.shape
 
-        x = x + self.sa_heads(x, x, x, self.tril[:T, :T] == 0)
-        return self.ln1(x)
-
+        x_1 = self.ln1(x)
+        x = x + self.sa_heads(x_1, x_1, x_1, self.tril[:T, :T] == 0)
+        x_2 = self.ln2(x)
+        x = x + self.cross_attention(x_2, enc_output, enc_output, torch.ones((block_size, block_size), device=device))
+        x = x + self.ffwd(self.ln3(x))
+        
+        return x
 
 """
     Encoder Class
@@ -143,7 +155,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
-        self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
+        # self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
 
         self.sa_heads = MultiHeadAttention(n_head, n_embed, dropout)
         self.ln1 = nn.LayerNorm(n_embed)
@@ -153,50 +165,10 @@ class Encoder(nn.Module):
     def forward(self, x):
         B, T, C= x.shape
 
-        _x = self.ln1(x)
-        x = x + self.sa_heads(_x, _x, _x, self.tril[:T, :T] == 0)
+        x_1 = self.ln1(x)
+        x = x + self.sa_heads(x_1, x_1, x_1, torch.ones((block_size, block_size), device=device))
         x = x + self.ffwd(self.ln2(x))
         return x
-
-
-"""
-    Cross Attention Class
-    Input:
-        Query (English words)
-        Key and Value (Spanish words)
-    Output:
-        Cross Attention prediction
-"""
-class CrossAttention(nn.Module):
-    def __init__(self, n_embed, n_head,block_size, dropout):
-        super().__init__()
-        self.n_embed = n_embed
-        self.n_head = n_head
-
-        self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
-
-        self.decoder = Decoder(n_embed, n_head, block_size, dropout)
-        self.encoder = Encoder(n_embed, n_head, dropout)
-
-        self.sa_heads = MultiHeadAttention(n_head, n_embed, dropout)
-        self.ln1 = nn.LayerNorm(n_embed)
-        self.ffwd = FeedForward(n_embed, dropout)
-        self.ln2 = nn.LayerNorm(n_embed)
-
-    # def forward(self, x, y):
-    #     k = self.encoder(x)
-    #     v = self.decoder(x)
-    #     q = self.decoder(y)
-
-    #     res = q + self.sa_heads(q, k, v)
-    #     res = res + self.ln1(res)
-    #     return res + self.ffwd(self.ln2(res))
-
-    def forward(self, context, x):
-        attn_out = x + self.sa_heads(x, context, context, self.tril[:T, :T] == 0)
-        attn_out = attn_out + self.ln1(attn_out)
-        return attn_out + self.ffwd(self.ln2(attn_out))
-
 
 """
     Transformer Class
@@ -214,7 +186,6 @@ class Transformer(nn.Module):
         self.pos_enc = PositionalEncoding(n_embed, dropout)
         self.encoder_layers = nn.ModuleList([Encoder(n_embed, n_head, dropout) for _ in range(n_layer)])
         self.decoder_layers = nn.ModuleList([Decoder(n_embed, n_head, block_size, dropout) for _ in range(n_layer)])
-        self.sa_heads = MultiHeadAttention(n_head, n_embed, dropout)
 
         # self.blocks = nn.Sequential(*[Block(n_embed, n_head=n_head, block_size=block_size, dropout=dropout) for _ in range(n_layer)]) # shortened way for multiple blocks in a sequential model
         self.ln_f = nn.LayerNorm(n_embed)    # final layer norm
@@ -228,22 +199,15 @@ class Transformer(nn.Module):
         x_pos_enc = self.pos_enc(x_tok_emb)
         y_pos_enc = self.pos_enc(y_tok_emb)
 
-        # print(x_pos_enc.shape)
-        # print(y_pos_enc.shape)
-
         enc_output = x_pos_enc
         for encoder in self.encoder_layers:
           enc_output = encoder(enc_output)
 
         dec_output = y_pos_enc
         for decoder in self.decoder_layers:
-          dec_output = decoder(dec_output) 
-          dec_output = dec_output + self.sa_heads(dec_output, enc_output, enc_output)
-
-        res = dec_output
+          dec_output = decoder(dec_output, enc_output) 
         
-        # res = self.blocks(x_pos_enc, y_pos_enc)
-        res = self.ln_f(res)
+        res = self.ln_f(dec_output)
         logits = self.lm_head(res)
 
         if targets == None:
@@ -326,6 +290,7 @@ class Transformer(nn.Module):
         target_len = 0
 
         for i in range(1, seq_len):
+            # print(target)
             target_embed = self.token_embedding_table_y(target)
             target_enc = self.pos_enc(target_embed)
 
@@ -333,20 +298,22 @@ class Transformer(nn.Module):
 
             dec_output = target_enc
             for decoder in self.decoder_layers:
-                dec_output = decoder(target_enc)
-                dec_output = self.sa_heads(dec_output, enc_output, enc_output)
+                dec_output = decoder(dec_output, enc_output)
 
-
-            res = F.softmax(dec_output, dim=-1)
+            # print(dec_output)
+            res = F.softmax(self.lm_head(self.ln_f(dec_output)), dim=-1)
             res = torch.argmax(res, dim=-1) # (1, L)
 
             # print(res[0][i-1])
+            # print(res)
 
             last_word_id = res[0][i-1].item()
+            # print(last_word_id)
             
             if last_word_id == 2:
                 break
-
+            
+            print(last_word_id)
             target[0][i] = last_word_id
             target_len = i
 

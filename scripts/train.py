@@ -6,14 +6,14 @@ import random
 import time
 import gc
 
-batch_size = 32 # number of sequences per batch
+batch_size = 24 # number of sequences per batch
 block_size = 96 # max length of sequence/characters per sequence
 # max_iters = 2000 # number of iterations to train for
 # eval_iters = 200 # iterations to evaluate model performance
 # eval_interval = 250 # interval to evaluate model performance
-max_iters = 10 # number of iterations to train for
-eval_iters = 2 # iterations to evaluate model performance
-eval_interval = 2 # interval to evaluate model performance
+max_iters = 20 # number of iterations to train for
+eval_iters = 5 # iterations to evaluate model performance
+eval_interval = 4 # interval to evaluate model performance
 learning_rate = 3e-4
 n_embed = 384 # embedding dimension
 n_head = 6 # number of heads
