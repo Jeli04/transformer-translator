@@ -59,6 +59,8 @@ def tokenize(data, en_tokenizer, es_tokenizer, block_size):
     eos = en_tokenizer.eos_id()
     
     for row in data:
+        # print(row[0])
+        # print(row[1])
         en = torch.tensor(en_tokenizer.EncodeAsIds(row[0]), dtype=torch.long)
         es = torch.tensor(es_tokenizer.EncodeAsIds(row[1]), dtype=torch.long)
 
@@ -83,13 +85,36 @@ def tokenize(data, en_tokenizer, es_tokenizer, block_size):
 
     return tokenized_data
 
-# en_sp = spm.SentencePieceProcessor()
-# en_sp.Load("models/sentencepiece_model_10k_english.model")
+en_sp = spm.SentencePieceProcessor()
+en_sp.Load("models/sentencepiece_model_10k_english.model")
 
-# es_sp = spm.SentencePieceProcessor()
-# es_sp.Load("models/sentencepiece_model_16k_spanish.model")
+es_sp = spm.SentencePieceProcessor()
+es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
+# test = tokenize(split_data(), en_sp, es_sp, 96) # 0 is english
 
+# enc = es_sp.EncodeAsIds("¿sabés por qué pasa?")
+# enc.insert(0, 1)
+# enc.append(2)
+
+# # Pad the list to size 96
+# desired_size = 96
+# if len(enc) < desired_size:
+#     padding = [0] * (desired_size - len(enc))
+#     enc = enc + padding
+
+# print(enc)
+# print(test[0][1].tolist())
+
+# for pair in test:
+#     if pair[1].tolist() == enc:
+#         print(pair[0])
+
+print(en_sp.DecodeIds([5-1,  25-1, 107-1, 277-1, 393-1,  11-1, 276-1,   4-1]))
+print(es_sp.DecodeIds([95-1,  70-1, 257-1,  65-1, 193-1,   4-1]))
+
+# print(es_sp.EncodeAsIds("¿Hola Cómo te llamas?"))
+# print(es_sp.DecodeIds([1, 13, 3, 69, 300, 25, 3, 41, 1279, 35, 1964, 12]))
 # print(tokenize(split_data(), en_sp, es_sp, 256)[0]) # 0 is english
-# print(tokenize(split_data(), en_sp, es_sp, 256)[1]) # 1 is spanish
-# print(torch.tensor(es_sp.EncodeAsIds("como suele haber varias páginas web sobre cualquier tema, normalmente sólo le doy al botón de retroceso cuando entro en una página web que tiene anuncios en ventanas emergentes. simplemente voy a la siguiente página encontrada por google y espero encontrar algo menos irritante."), dtype=torch.long).size(0))
+# print(tokenize(split_data(), en_sp, es_sp, 256)[500]) # 1 is spanish
+# print(torch.tensor(es_sp.EncodeAsIds("como suele haber varias páginas web sobre cualquier tema, normalmente sólo le doy al botón de retroceso cuando entro en una página web que tiene anuncios en ventanas emergentes. simplemente voy a la siguiente página encontrada por google y espero encontrar algo menos irritante."), dtype=torch.long))

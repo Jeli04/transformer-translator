@@ -4,6 +4,7 @@ from torch import Tensor
 import numpy as np
 import math
 from torch.nn import functional as F
+import matplotlib.pyplot as plt
 
 
 batch_size = 64 # number of sequences per batch
@@ -32,6 +33,7 @@ class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout, max_len=5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
+        self.d_model = d_model
 
         # d_model is the dimension of the embedding vector
         position = torch.arange(0, max_len, device=device).unsqueeze(1)
@@ -41,6 +43,7 @@ class PositionalEncoding(nn.Module):
         self.pe[:, 0, 1::2] = torch.cos(position * div_term)
 
     def forward(self, x):
+        x = x * math.sqrt(self.d_model)
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
@@ -61,23 +64,49 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.n_embed = n_embed
 
+        self.counter = 0
+
+    def visualize_attention(self, wei):
+        # Plot attention scores
+        layer_num = 1  # Specify the layer number you want to visualize
+        head_num = 0   # Specify the attention head you want to visualize
+
+        # Get the attention scores for the specified layer and head
+        attention_map = wei[0][0].cpu().detach().numpy()
+        # print(attention_map.shape)
+
+        # Plot the attention heatmap
+        plt.figure(figsize=(10, 8))
+        plt.imshow(attention_map, cmap='viridis', aspect='auto')
+        plt.title(f"Layer {layer_num}, Head {head_num} Attention")
+        plt.xlabel("Input Tokens")
+        plt.ylabel("Output Tokens")
+        plt.colorbar()
+        plt.show()
+
+
     def forward(self, query, key, value, mask=None):
         B, T, C = query.shape  # B is batch size, T is sequence length, C is n_embed
         # d_k is n_embed
 
         # Perform linear transformation
         q, k, v = self.query(query), self.key(key), self.value(value)
-        # q = self.query(query)
-        k = k.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
-        q = q.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
-        v = v.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
-
+        # k = k.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
+        # q = q.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
+        # v = v.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
+        k = k.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
+        q = q.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
+        v = v.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         with torch.cuda.amp.autocast_mode.autocast(enabled=False):
 
             wei = q @ k.transpose(-2, -1) * C **-0.5  # C is head size
 
             if mask!=None:
-                wei = wei.masked_fill(mask[:T, :T]==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
+                mask = mask.unsqueeze(1)
+                wei = wei.masked_fill(mask==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
+                # print(wei)
+            # if self.counter % 250 == 0:
+            #     self.visualize_attention(wei)
 
             wei = F.softmax(wei, dim=-1)  # normalize
 
@@ -88,7 +117,7 @@ class MultiHeadAttention(nn.Module):
             # if mask==None: print("Encoder: ")
             # else: print("Decoder: ")
             # print(out)
-
+        self.counter+=1
         out = self.dropout(self.proj(out))
         return out
 
@@ -132,13 +161,13 @@ class Decoder(nn.Module):
         self.ffwd = FeedForward(n_embed, dropout)
         self.ln3 = nn.LayerNorm(n_embed)
 
-    def forward(self, x, enc_output):
+    def forward(self, x, enc_output, enc_mask, dec_mask):
         B, T, C= x.shape
 
         x_1 = self.ln1(x)
-        x = x + self.sa_heads(x_1, x_1, x_1, self.tril[:T, :T] == 0)
+        x = x + self.sa_heads(x_1, x_1, x_1, dec_mask)
         x_2 = self.ln2(x)
-        x = x + self.cross_attention(x_2, enc_output, enc_output, torch.ones((block_size, block_size), device=device))
+        x = x + self.cross_attention(x_2, enc_output, enc_output, enc_mask)
         x = x + self.ffwd(self.ln3(x))
         
         return x
@@ -162,11 +191,11 @@ class Encoder(nn.Module):
         self.ffwd = FeedForward(n_embed, dropout)
         self.ln2 = nn.LayerNorm(n_embed)
 
-    def forward(self, x):
+    def forward(self, x, enc_mask):
         B, T, C= x.shape
 
         x_1 = self.ln1(x)
-        x = x + self.sa_heads(x_1, x_1, x_1, torch.ones((block_size, block_size), device=device))
+        x = x + self.sa_heads(x_1, x_1, x_1, enc_mask)
         x = x + self.ffwd(self.ln2(x))
         return x
 
@@ -191,22 +220,27 @@ class Transformer(nn.Module):
         self.ln_f = nn.LayerNorm(n_embed)    # final layer norm
         self.lm_head = nn.Linear(n_embed, vocab_size_y) # paramters are in_features, out_features
 
-    def forward(self, x, targets):
+    def forward(self, x, targets, src_mask, target_mask):
 
         x_tok_emb = self.token_embedding_table_x(x)
         y_tok_emb = self.token_embedding_table_y(targets)
 
         x_pos_enc = self.pos_enc(x_tok_emb)
         y_pos_enc = self.pos_enc(y_tok_emb)
+        
+        # print("target shape: ", y_pos_enc.shape)
 
         enc_output = x_pos_enc
         for encoder in self.encoder_layers:
-          enc_output = encoder(enc_output)
+          enc_output = encoder(enc_output, src_mask)
 
         dec_output = y_pos_enc
         for decoder in self.decoder_layers:
-          dec_output = decoder(dec_output, enc_output) 
+          dec_output = decoder(dec_output, enc_output, src_mask, target_mask) 
         
+        # print("before final linear forward shape: ", dec_output.shape)
+
+
         res = self.ln_f(dec_output)
         logits = self.lm_head(res)
 
@@ -215,12 +249,17 @@ class Transformer(nn.Module):
         else:
             # pytorch wants a (B, C, T) tensor for cross_entropy so we need some reshaping
             B, T, C = logits.shape
-            # print(logits.shape)
-            # print(targets.shape)
+            # print("Logits: ", logits.shape)
+            # print("Targets: ", targets.shape)
+            # print(targets)
             logits = logits.view(B*T, C)
             targets = targets.view(B*T)
+            # torch.set_printoptions(threshold=10_000)
+            # print("Logits: ", logits)
+            # print("Targets: ", targets)
             loss = F.cross_entropy(logits, targets)
 
+        # print(logits.shape)
         return logits, loss
 
 
@@ -237,90 +276,108 @@ class Transformer(nn.Module):
     """
     # the job of generate is to extend idx to be B by T+1, B by T+2 ....
     def generate(self, src, seq_len):
-        # start = torch.tensor([1], dtype=torch.long, device=device)
-        # length = max_new_tokens - 1
-        # zeros = torch.zeros(length, dtype=torch.long, device=device)
-        # target_input = torch.cat([start, zeros])
-
         # self.dropout = 0 # turn off dropout
 
         # self.eval() # put model in eval mode
 
         # src = torch.stack([src])
-        # target_input = torch.stack([target_input])
+        # src = self.token_embedding_table_x(src)
+        # src = self.pos_enc(src)
+        # enc_output = src
+        # for encoder in self.encoder_layers:
+        #   enc_output = encoder(enc_output)
 
-        # logits, loss, = self(src, target_input) # call forward
+        # # print(enc_output.shape)
+
+        # target = torch.zeros(seq_len).long().to(device)
+        # target[0] = 1   # set the first token to be the start token
+        # target = torch.stack([target])
+        # target_len = 0
+
+        # for i in range(1, seq_len):
+        #     # print(target)
+        #     target_embed = self.token_embedding_table_y(target)
+        #     target_enc = self.pos_enc(target_embed)
+
+        #     # print("target shape: ", target_enc.shape)
+
+        #     dec_output = target_enc
+        #     for decoder in self.decoder_layers:
+        #         dec_output = decoder(dec_output, enc_output)
         
-        # res = torch.tensor([0], dtype=torch.long, device=device).unsqueeze(0)
-        # # idx is (B, T) array of indicies in the current context
-        # for i in range(max_new_tokens):
-        #     # gets the predictions
-        #     # print(src.shape)
-        #     # print(target_input.shape)
-        #     # print(logits.shape)
-        #     # focus only on the last time step
-        #     # logits = logits[: , -1, :]  # becomes (B, C)
-        #     # apply softmax to normalize and get probabilities
-        #     probs = F.softmax(logits[i], dim=-1) # dim are (B, C)
-        #     # sample from distribution to get a single prediction for what char comes next
-        #     src_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+        #     dec_output = self.ln_f(dec_output)
+        #     dec_output = self.lm_head(dec_output)
+        #     res = F.softmax(dec_output, dim=-1)
+
+        #     # res = F.softmax(self.lm_head(self.ln_f(dec_output)), dim=-1)
+
+        #     # added this to make the result match logits (batch_size * seq_len, vocab_size)
+        #     B, T, C = res.shape
+        #     res = res.view(B*T, C)
+
+        #     # print("dec shape:", res.shape)
+        #     res = torch.argmax(res, dim=-1) # (1, seq_len)
+
+        #     # print(res)
+
+        #     last_word_id = res[i-1]
+        #     # print(last_word_id)
             
-        #     # append sampled index to the running sequence
-        #     res = torch.cat((res, src_next.unsqueeze(0)), dim=1) # (B, T+1)
+        #     if last_word_id == 2:
+        #         break
+            
+        #     # print(last_word_id)
+        #     target[0][i] = last_word_id
+        #     target_len = i
+
+        # print(target[0])
         # self.dropout = dropout # turn dropout back on
-        # print(res[0])
-        # return res[0]
+        # self.train()
+        # return target
 
         self.dropout = 0 # turn off dropout
 
         self.eval() # put model in eval mode
 
         src = torch.stack([src])
-        src = self.token_embedding_table_x(src)
-        src = self.pos_enc(src)
-        enc_output = src
-        for encoder in self.encoder_layers:
-          enc_output = encoder(enc_output)
+        src_mask = (src != 0).unsqueeze(1).to(device=device)  # (B, 1, L)
 
-        print(enc_output.shape)
 
         target = torch.zeros(seq_len).long().to(device)
         target[0] = 1   # set the first token to be the start token
         target = torch.stack([target])
         target_len = 0
 
+
         for i in range(1, seq_len):
-            # print(target)
-            target_embed = self.token_embedding_table_y(target)
-            target_enc = self.pos_enc(target_embed)
+            trg_mask = (target != 0).unsqueeze(1)  # (B, 1, L)
+            nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool)  # (1, L, L)
+            nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
+            trg_mask = (trg_mask & nopeak_mask) # (B, L, L) padding false
 
-            # print(target_enc.shape)
+            logits, loss = self(src, target, src_mask, trg_mask)
+            # print("loss: ", loss)
 
-            dec_output = target_enc
-            for decoder in self.decoder_layers:
-                dec_output = decoder(dec_output, enc_output)
+            # print("dec shape:", res.shape)
+            res = torch.argmax(logits, dim=-1) # (1, seq_len)
 
-            # print(dec_output)
-            res = F.softmax(self.lm_head(self.ln_f(dec_output)), dim=-1)
-            res = torch.argmax(res, dim=-1) # (1, L)
-
-            # print(res[0][i-1])
             # print(res)
 
-            last_word_id = res[0][i-1].item()
+            last_word_id = res[i-1]
             # print(last_word_id)
+            # print(res[i])
             
-            if last_word_id == 2:
-                break
-            
-            print(last_word_id)
+            # print(last_word_id)
             target[0][i] = last_word_id
             target_len = i
 
+            if last_word_id == 2:
+                break
+
         print(target[0])
         self.dropout = dropout # turn dropout back on
+        self.train()
         return target
-
 
 # import sentencepiece as spm
 
