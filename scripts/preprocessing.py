@@ -48,24 +48,21 @@ def split_data():
     replace the vocab size in the transformer with the size of the tokenizer
 """
 
+import torch
+
 def tokenize(data, en_tokenizer, es_tokenizer, block_size):
-    # sp = spm.SentencePieceProcessor()
-    # sp.Load("models/sentencepiece_model_16k.model")
+    # Get BOS and EOS IDs
+    bos = en_tokenizer.bos_id()
+    eos = en_tokenizer.eos_id()
 
     tokenized_data = []
 
-    # Get BOS and EOS IDs
-    bos = en_tokenizer.bos_id()  
-    eos = en_tokenizer.eos_id()
-    
     for row in data:
-        # print(row[0])
-        # print(row[1])
         en = torch.tensor(en_tokenizer.EncodeAsIds(row[0]), dtype=torch.long)
         es = torch.tensor(es_tokenizer.EncodeAsIds(row[1]), dtype=torch.long)
 
         # Add BOS and EOS
-        en = torch.cat([torch.tensor([bos]), en, torch.tensor([eos])]) 
+        en = torch.cat([torch.tensor([bos]), en, torch.tensor([eos])])
         es = torch.cat([torch.tensor([bos]), es, torch.tensor([eos])])
 
         len1 = en.size(0)
@@ -80,10 +77,25 @@ def tokenize(data, en_tokenizer, es_tokenizer, block_size):
             padding = torch.zeros(block_size - len2, dtype=torch.long)
             es = torch.cat([es, padding])
 
+        # Concatenate en and es along a new dimension (1)
+        combined_tensor = torch.cat([en.unsqueeze(0), es.unsqueeze(0)], dim=0)
 
-        tokenized_data.append((en, es))
+        tokenized_data.append(combined_tensor)
+
+    # Convert the list of combined tensors to a single tensor
+    tokenized_data = torch.stack(tokenized_data, dim=0)
 
     return tokenized_data
+
+class CustomDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __getitem__(self, index):
+        return self.dataset[index][0], self.dataset[index][1]
+
+    def __len__(self):
+        return len(self.dataset)
 
 en_sp = spm.SentencePieceProcessor()
 en_sp.Load("models/sentencepiece_model_10k_english.model")
@@ -91,7 +103,8 @@ en_sp.Load("models/sentencepiece_model_10k_english.model")
 es_sp = spm.SentencePieceProcessor()
 es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
-# test = tokenize(split_data(), en_sp, es_sp, 96) # 0 is english
+test = CustomDataset(tokenize(split_data(), en_sp, es_sp, 96)) # 0 is english
+print(test.__getitem__(0))
 
 # enc = es_sp.EncodeAsIds("¿sabés por qué pasa?")
 # enc.insert(0, 1)
@@ -110,9 +123,9 @@ es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 #     if pair[1].tolist() == enc:
 #         print(pair[0])
 
-print(en_sp.DecodeIds([5-1,  25-1, 107-1, 277-1, 393-1,  11-1, 276-1,   4-1]))
-print(es_sp.DecodeIds([95-1,  70-1, 257-1,  65-1, 193-1,   4-1]))
 
+# print(en_sp.DecodeIds([5-1,  25-1, 107-1, 277-1, 393-1,  11-1, 276-1,   4-1]))
+# print(es_sp.DecodeIds([95-1,  70-1, 257-1,  65-1, 193-1,   4-1]))
 # print(es_sp.EncodeAsIds("¿Hola Cómo te llamas?"))
 # print(es_sp.DecodeIds([1, 13, 3, 69, 300, 25, 3, 41, 1279, 35, 1964, 12]))
 # print(tokenize(split_data(), en_sp, es_sp, 256)[0]) # 0 is english

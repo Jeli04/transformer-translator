@@ -5,29 +5,30 @@ from transformer import Transformer
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
 
-batch_size = 24 # number of sequences per batch
+batch_size = 64 # number of sequences per batch
 block_size = 96 # max length of sequence/characters per sequence
 max_iters = 2000 # number of iterations to train for
 eval_iters = 200 # iterations to evaluate model performance
 eval_interval = 250 # interval to evaluate model performance
-learning_rate = 3e-4
+learning_rate = 1e-6
 n_embed = 384 # embedding dimension
-n_head = 6 # number of heads
+n_head = 8 # number of heads
 head_size = n_embed // n_head # size of each head
 n_layer = 6 # number of layers
 dropout = 0.2
+translate_interval = 100
 
 en_sp = spm.SentencePieceProcessor()
-en_sp.Load("models/sentencepiece_model_10k_english.model")
+en_sp.Load("models/sentencepiece_model_10k_english2.model")
 
 es_sp = spm.SentencePieceProcessor()
-es_sp.Load("models/sentencepiece_model_16k_spanish.model")
+es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
 vocab_size_x = len(en_sp)
 vocab_size_y = len(es_sp)
 
-model = Transformer(n_embed, n_head, dropout, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
-checkpoint = torch.load("models/model_two_tok.pth")
+model = Transformer(n_embed, n_head, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
+checkpoint = torch.load("models/model_two_tok.pth", strict=False)
 model.load_state_dict(checkpoint)
 
 en = torch.tensor(en_sp.EncodeAsIds("How are you?"), dtype=torch.long, device=device)

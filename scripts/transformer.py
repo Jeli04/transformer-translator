@@ -6,18 +6,7 @@ import math
 from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
-
-batch_size = 64 # number of sequences per batch
-block_size = 256 # max length of sequence/characters per sequence
-max_iters = 5000 # number of iterations to train for
-eval_interval = 200 # interval to evaluate model performance
-learning_rate = 3e-4
-n_embed = 384 # embedding dimension
-n_head = 6 # number of heads
-head_size = n_embed // n_head # size of each head
-n_layer = 6 # number of layers
 dropout = 0.2
-
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
 
@@ -30,7 +19,7 @@ torch.cuda.set_device(0)
         The entire sequence of words with positional encoding
 """
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout, max_len=5000):
+    def __init__(self, d_model, max_len=5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.d_model = d_model
@@ -52,7 +41,7 @@ class PositionalEncoding(nn.Module):
     Multi Head Attention Class
 """
 class MultiHeadAttention(nn.Module):
-    def __init__(self, num_heads, n_embed, dropout):
+    def __init__(self, num_heads, n_embed):
         super().__init__()
         self.proj = nn.Linear(n_embed, n_embed)
         self.dropout = nn.Dropout(p=dropout)
@@ -98,13 +87,12 @@ class MultiHeadAttention(nn.Module):
         q = q.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         v = v.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         with torch.cuda.amp.autocast_mode.autocast(enabled=False):
-
             wei = q @ k.transpose(-2, -1) * C **-0.5  # C is head size
 
             if mask!=None:
                 mask = mask.unsqueeze(1)
+                # print("wei: ", wei.shape)
                 wei = wei.masked_fill(mask==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
-                # print(wei)
             # if self.counter % 250 == 0:
             #     self.visualize_attention(wei)
 
@@ -126,7 +114,7 @@ class MultiHeadAttention(nn.Module):
     Feed Forward Class
 """
 class FeedForward(nn.Module):
-    def __init__(self, n_embed, dropout):
+    def __init__(self, n_embed):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(n_embed, n_embed * 4),    # * 4 based on the transformer paper
@@ -147,18 +135,18 @@ class FeedForward(nn.Module):
         Cross Attention output
 """
 class Decoder(nn.Module):
-    def __init__(self, n_embed, n_head, block_size, dropout):
+    def __init__(self, n_embed, n_head, block_size):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
 
         self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
 
-        self.sa_heads = MultiHeadAttention(n_head, n_embed, dropout)
+        self.sa_heads = MultiHeadAttention(n_head, n_embed)
         self.ln1 = nn.LayerNorm(n_embed)
-        self.cross_attention = MultiHeadAttention(n_head, n_embed, dropout) 
+        self.cross_attention = MultiHeadAttention(n_head, n_embed) 
         self.ln2 = nn.LayerNorm(n_embed)
-        self.ffwd = FeedForward(n_embed, dropout)
+        self.ffwd = FeedForward(n_embed)
         self.ln3 = nn.LayerNorm(n_embed)
 
     def forward(self, x, enc_output, enc_mask, dec_mask):
@@ -180,15 +168,15 @@ class Decoder(nn.Module):
         Multi Head Attention prediction
 """
 class Encoder(nn.Module):
-    def __init__(self, n_embed, n_head, dropout):
+    def __init__(self, n_embed, n_head):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
         # self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
 
-        self.sa_heads = MultiHeadAttention(n_head, n_embed, dropout)
+        self.sa_heads = MultiHeadAttention(n_head, n_embed)
         self.ln1 = nn.LayerNorm(n_embed)
-        self.ffwd = FeedForward(n_embed, dropout)
+        self.ffwd = FeedForward(n_embed)
         self.ln2 = nn.LayerNorm(n_embed)
 
     def forward(self, x, enc_mask):
@@ -198,26 +186,57 @@ class Encoder(nn.Module):
         x = x + self.sa_heads(x_1, x_1, x_1, enc_mask)
         x = x + self.ffwd(self.ln2(x))
         return x
+    
+
+"""
+    Decoder Block Class
+"""
+class DecoderBlock(nn.Module):
+    def __init__(self, n_embed, n_head, block_size, n_layers):
+        super().__init__()
+        self.ln = nn.LayerNorm(n_embed)
+        self.n_layers = n_layers
+        self.decoder_layers = nn.ModuleList([Decoder(n_embed, n_head, block_size) for _ in range(n_layers)])
+
+    def forward(self, x, enc_output, enc_mask, dec_mask):
+        for i in range(self.n_layers):
+            x = self.decoder_layers[i](x, enc_output, enc_mask, dec_mask)
+        return self.ln(x)
+    
+
+"""
+    Encoder Block Class
+"""
+class EncoderBlock(nn.Module):
+    def __init__(self, n_embed, n_head, block_size, n_layers):
+        super().__init__()
+        self.ln = nn.LayerNorm(n_embed)
+        self.n_layers = n_layers
+        self.encoder_layers = nn.ModuleList([Encoder(n_embed, n_head) for _ in range(n_layers)])
+
+    def forward(self, x, enc_mask):
+        for i in range(self.n_layers):
+            x = self.encoder_layers[i](x, enc_mask)
+        return self.ln(x)
+
 
 """
     Transformer Class
 """
 class Transformer(nn.Module):
-    def __init__(self, n_embed, n_head, dropout, block_size, vocab_size_x, vocab_size_y, n_layer):
+    def __init__(self, n_embed, n_head, block_size, vocab_size_x, vocab_size_y, n_layer):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
-        self.dropout = dropout
+        # self.dropout = dropout
         self.block_size = block_size
 
         self.token_embedding_table_x = nn.Embedding(vocab_size_x, n_embed) # paramters are num_embeddings (size of dictionary), embedding_dim (dim of embeddign vec)
         self.token_embedding_table_y = nn.Embedding(vocab_size_y, n_embed) # paramters are num_embeddings (size of dictionary), embedding_dim (dim of embeddign vec)
-        self.pos_enc = PositionalEncoding(n_embed, dropout)
-        self.encoder_layers = nn.ModuleList([Encoder(n_embed, n_head, dropout) for _ in range(n_layer)])
-        self.decoder_layers = nn.ModuleList([Decoder(n_embed, n_head, block_size, dropout) for _ in range(n_layer)])
+        self.pos_enc = PositionalEncoding(n_embed)
+        self.decoder_block = DecoderBlock(n_embed, n_head, block_size, n_layer)
+        self.encoder_block = EncoderBlock(n_embed, n_head, block_size, n_layer)
 
-        # self.blocks = nn.Sequential(*[Block(n_embed, n_head=n_head, block_size=block_size, dropout=dropout) for _ in range(n_layer)]) # shortened way for multiple blocks in a sequential model
-        self.ln_f = nn.LayerNorm(n_embed)    # final layer norm
         self.lm_head = nn.Linear(n_embed, vocab_size_y) # paramters are in_features, out_features
 
     def forward(self, x, targets, src_mask, target_mask):
@@ -230,19 +249,10 @@ class Transformer(nn.Module):
         
         # print("target shape: ", y_pos_enc.shape)
 
-        enc_output = x_pos_enc
-        for encoder in self.encoder_layers:
-          enc_output = encoder(enc_output, src_mask)
-
-        dec_output = y_pos_enc
-        for decoder in self.decoder_layers:
-          dec_output = decoder(dec_output, enc_output, src_mask, target_mask) 
+        enc_output = self.encoder_block(x_pos_enc, src_mask)
+        dec_output = self.decoder_block(y_pos_enc, enc_output, src_mask, target_mask)
         
-        # print("before final linear forward shape: ", dec_output.shape)
-
-
-        res = self.ln_f(dec_output)
-        logits = self.lm_head(res)
+        logits = self.lm_head(dec_output)
 
         if targets == None:
             loss = None
@@ -334,13 +344,16 @@ class Transformer(nn.Module):
         # self.dropout = dropout # turn dropout back on
         # self.train()
         # return target
-
-        self.dropout = 0 # turn off dropout
+        global dropout
+        dropout = 0 # turn off dropout
 
         self.eval() # put model in eval mode
+        softmax = nn.LogSoftmax(dim=-1)
 
         src = torch.stack([src])
         src_mask = (src != 0).unsqueeze(1).to(device=device)  # (B, 1, L)
+        src_tok_emb = self.token_embedding_table_x(src)
+        src_pos_enc = self.pos_enc(src_tok_emb)
 
 
         target = torch.zeros(seq_len).long().to(device)
@@ -349,21 +362,30 @@ class Transformer(nn.Module):
         target_len = 0
 
 
-        for i in range(1, seq_len):
+        for i in range(seq_len):
             trg_mask = (target != 0).unsqueeze(1)  # (B, 1, L)
             nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool)  # (1, L, L)
             nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
             trg_mask = (trg_mask & nopeak_mask) # (B, L, L) padding false
 
-            logits, loss = self(src, target, src_mask, trg_mask)
-            # print("loss: ", loss)
+            target_tok_emb = self.token_embedding_table_y(target)
+            target_pos_enc = self.pos_enc(target_tok_emb)
 
-            # print("dec shape:", res.shape)
-            res = torch.argmax(logits, dim=-1) # (1, seq_len)
+            enc_output = self.encoder_block(src_pos_enc, src_mask)
+            dec_output = self.decoder_block(target_pos_enc, enc_output, src_mask, trg_mask)
+
+            output = softmax(self.lm_head(dec_output))
+
+            output = torch.argmax(output, dim=-1) # (1, seq_len)
 
             # print(res)
 
-            last_word_id = res[i-1]
+            last_word_id = output[0][i].item()
+            if last_word_id == 0:
+                torch.set_printoptions(threshold=100_000)
+                print(dec_output)
+                torch.set_printoptions(profile="default") # reset
+
             # print(last_word_id)
             # print(res[i])
             
@@ -375,7 +397,7 @@ class Transformer(nn.Module):
                 break
 
         print(target[0])
-        self.dropout = dropout # turn dropout back on
+        dropout = 0.2 # turn dropout back on
         self.train()
         return target
 

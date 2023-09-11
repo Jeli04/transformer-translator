@@ -1,26 +1,29 @@
 from transformer import Transformer
+import torch.optim as optim
 import preprocessing
 import sentencepiece as spm
 import torch
 import random
 import time
 import gc
+import numpy as np
 
-batch_size = 32 # number of sequences per batch
+batch_size = 64 # number of sequences per batch
 block_size = 96 # max length of sequence/characters per sequence
-max_iters = 2000 # number of iterations to train for
+max_iters = 50000 # number of iterations to train for
+epochs = 200
 eval_iters = 200 # iterations to evaluate model performance
-eval_interval = 250 # interval to evaluate model performance
-# max_iters = 20 # number of iterations to train for
-# eval_iters = 5 # iterations to evaluate model performance
-# eval_interval = 4 # interval to evaluate model performance
-learning_rate = 1e-6
-n_embed = 384 # embedding dimension
+eval_interval = 200 # interval to evaluate model performance
+learning_rate = 5e-4
+n_embed = 512 # embedding dimension
+d_k = 64
+d_ff = 2048
 n_head = 8 # number of heads
 head_size = n_embed // n_head # size of each head
 n_layer = 6 # number of layers
 dropout = 0.2
 translate_interval = 100
+warmup_steps = 3000
 
 start_time = time.time()
 gc.collect()
@@ -62,30 +65,6 @@ random.shuffle(data)
 train_data = data[:train_size]
 val_data = data[train_size:]
 
-
-# enc = es_sp.EncodeAsIds("si quieres sonar como un hablante nativo, debes estar dispuesto a practicar diciendo la misma frase una y otra vez de la misma manera en que un músico de banjo practica el mismo fraseo una y otra vez hasta que lo puedan tocar correctamente y en el tiempo esperado.")
-# enc.insert(0, 1)
-# enc.append(2)
-
-# # Pad the list to size 96
-# desired_size = 96
-# if len(enc) < desired_size:
-#     padding = [0] * (desired_size - len(enc))
-#     enc = enc + padding
-
-# print(enc)
-# # print(train_data[0][1].tolist())
-
-# for pair in train_data:
-#     if pair[1].tolist() == enc:
-#         print(pair[0])
-#         print(en_sp.DecodeIds(pair[0].tolist()))
-
-# for pair in val_data:
-#     if pair[1].tolist() == enc:
-#         print(pair[0])
-#         print(en_sp.DecodeIds(pair[0].tolist()))
-
 """
     get_batch
     using the array of pairs randomly select batch size of pairs and return them
@@ -94,23 +73,6 @@ def get_batch(split):
     data = train_data if split == "train" else val_data
 
     ix = torch.randint(len(data) - block_size, (batch_size,)) # generates n numbrs based on btach_size that represent an index from data, randomally choosing four places to parallel train
-
-    # enc = es_sp.EncodeAsIds("no vuelvas nunca.")
-    # enc.insert(0, 1)
-    # enc.append(2)
-
-    # # Pad the list to size 96
-    # desired_size = 96
-    # if len(enc) < desired_size:
-    #     padding = [0] * (desired_size - len(enc))
-    #     enc = enc + padding
-
-    # print(enc)
-
-    # for pair in data:
-    #     if pair[1].tolist() == enc:
-    #         print(pair[0])
-    #         print(en_sp.DecodeIds(pair[0].tolist()))
 
     max_len = 0
 
@@ -187,6 +149,36 @@ def create_mask(src, target, seq_len=block_size):
 
 
 """
+  Schedule learning rate
+"""
+class ScheduledAdam():
+    def __init__(self, optimizer, hidden_dim, warm_steps):
+        self.init_lr = np.power(hidden_dim, -0.5)
+        self.optimizer = optimizer
+        self.current_steps = 0
+        self.warm_steps = warm_steps
+
+    def step(self):
+        # Update learning rate using current step information
+        self.current_steps += 1
+        lr = self.init_lr * self.get_scale()
+        
+        for p in self.optimizer.param_groups:
+            p['lr'] = lr
+
+        self.optimizer.step()
+        
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def get_scale(self):
+        return np.min([
+            np.power(self.current_steps, -0.5),
+            self.current_steps * np.power(self.warm_steps, -0.5)
+        ])
+
+
+"""
     train
 """
 def train_model(m):
@@ -195,6 +187,12 @@ def train_model(m):
 
   # create a PyTorch optimizer
   optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
+
+  optimizer = ScheduledAdam(
+            optim.Adam(m.parameters(), betas=(0.9, 0.98), eps=1e-9),
+            hidden_dim=n_embed,
+            warm_steps=warmup_steps
+        )
 
   for iter in range(max_iters):
     # once awhile evaluate the loss on train and val sets
@@ -257,7 +255,7 @@ def train_model(m):
 vocab_size_x = len(en_sp)
 vocab_size_y = len(es_sp)
 
-model = Transformer(n_embed, n_head, dropout, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
+model = Transformer(n_embed, n_head, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
 train_model(model)
 
 # print(get_batch('train'))
