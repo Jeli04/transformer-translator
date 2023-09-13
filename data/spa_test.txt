@@ -1,0 +1,121 @@
+Go.	Ve.
+Go.	Vete.
+Go.	Vaya.
+Go.	Váyase.
+Hi.	Hola.
+Run!	¡Corre!
+Run.	Corred.
+Who?	¿Quién?
+Fire!	¡Fuego!
+Fire!	¡Incendio!
+Fire!	¡Disparad!
+Help!	¡Ayuda!
+Help!	¡Socorro! ¡Auxilio!
+Help!	¡Auxilio!
+Jump!	¡Salta!
+Jump.	Salte.
+Stop!	¡Parad!
+Stop!	¡Para!
+Stop!	¡Pare!
+Wait!	¡Espera!
+Wait.	Esperen.
+Go on.	Continúa.
+Go on.	Continúe.
+Hello!	Hola.
+I ran.	Corrí.
+I ran.	Corría.
+I try.	Lo intento.
+I won!	¡He ganado!
+Oh no!	¡Oh, no!
+Relax.	Tomátelo con soda.
+Smile.	Sonríe.
+Attack!	¡Al ataque!
+Attack!	¡Atacad!
+Get up.	Levanta.
+Go now.	Ve ahora mismo.
+Got it!	¡Lo tengo!
+Got it?	¿Lo pillas?
+Got it?	¿Entendiste?
+He ran.	Él corrió.
+Hop in.	Métete adentro.
+Hug me.	Abrázame.
+I fell.	Me caí.
+I know.	Yo lo sé.
+I left.	Salí.
+I lied.	Mentí.
+I lost.	Perdí.
+I quit.	Dimito.
+I quit.	Renuncié.
+I work.	Estoy trabajando.
+I'm 19.	Tengo diecinueve.
+I'm up.	Estoy levantado.
+Listen.	Escucha.
+Listen.	Escuche.
+Listen.	Escuchen.
+No way!	¡No puede ser!
+No way!	De ninguna manera.
+No way!	¡De ninguna manera!
+No way!	¡Imposible!
+No way!	¡De ningún modo!
+No way!	¡De eso nada!
+No way!	¡Ni cagando!
+No way!	¡Mangos!
+No way!	¡Minga!
+No way!	¡Ni en pedo!
+Really?	¿En serio?
+Really?	¿La verdad?
+Thanks.	¡Gracias!
+Thanks.	Gracias.
+Try it.	Pruébalo.
+We try.	Lo procuramos.
+We won.	Ganamos.
+Why me?	¿Por qué yo?
+Ask Tom.	Pregúntale a Tom.
+Awesome!	¡Órale!
+Be calm.	Mantente en calma.
+Be cool.	Estate tranquilo.
+Be fair.	Sé justo.
+Be kind.	Sean gentiles.
+Be nice.	Sé agradable.
+Beat it.	Pírate.
+Call me.	Llamame.
+Call me.	Llamadme.
+Call me.	Llámame.
+Call us.	Llámanos.
+Come in.	Entre.
+Come in.	Pase.
+Come in.	¡Entren!
+Come on!	¡Órale!
+Come on.	Ándale.
+Come on.	¡Órale!
+Drop it!	Suéltalo.
+Get Tom.	Agarra a Tom.
+Get out!	Bájate.
+Get out.	Salte.
+Get out.	Sal.
+Get out.	Salí.
+Get out.	Salid.
+Get out.	Salgan.
+Go away!	¡Vete de aquí!
+Go away!	¡Lárgate!
+Go away!	¡Salga de aquí!
+Go away!	¡Largo!
+Go away!	¡Vete ya!
+Go away!	¡Órale!
+Go away!	¡A la calle!
+Go away.	¡Vete de aquí!
+Go away.	¡Lárgate!
+Go away.	¡Largo!
+Go away.	¡Vete ya!
+Go away.	¡Órale!
+Go away.	Lárguese.
+Go away.	Váyase.
+Go home.	Vete a casa.
+Go slow.	Vaya despacio.
+Goodbye!	¡Hasta luego!
+Goodbye!	Hasta la vista.
+Goodbye!	¡Chau!
+Hang on!	¡Espera!
+Hang on!	¡Espera un momento!
+Hang on!	¡Un segundo!
+Hang on.	Agarra fuertemente.

@@ -4,14 +4,20 @@ import preprocessing
 import sentencepiece as spm
 import torch
 import random
+import datetime
 import time
 import gc
+from tqdm import tqdm
+import sys
+import os
 import numpy as np
+from torch.utils.data import DataLoader
+
 
 batch_size = 64 # number of sequences per batch
 block_size = 96 # max length of sequence/characters per sequence
 max_iters = 50000 # number of iterations to train for
-epochs = 200
+epochs = 15
 eval_iters = 200 # iterations to evaluate model performance
 eval_interval = 200 # interval to evaluate model performance
 learning_rate = 5e-4
@@ -24,8 +30,11 @@ n_layer = 6 # number of layers
 dropout = 0.2
 translate_interval = 100
 warmup_steps = 3000
+training_file = "data/training_data_test.txt"
+validation_file = "data/validation_data_test.txt"
+checkpoint_folder = "models/checkpoints/"
+criterion = torch.nn.NLLLoss()
 
-start_time = time.time()
 gc.collect()
 torch.cuda.empty_cache()
 
@@ -48,22 +57,14 @@ en_sp.Load("models/sentencepiece_model_10k_english2.model")
 es_sp = spm.SentencePieceProcessor()
 es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
-data = preprocessing.tokenize(preprocessing.split_data(), en_sp, es_sp, block_size)
+split_data = preprocessing.split_data() # split data into training and validation files
 
-# Split proportions  
-train_percent = 0.8 
-val_percent = 0.2
+training_dataset = preprocessing.CustomDataset(preprocessing.tokenize(preprocessing.create_pairs(training_file), en_sp, es_sp, block_size))
+training_dataloader = DataLoader(training_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
-# Calculate split sizes
-train_size = int(len(data) * train_percent) 
-val_size = len(data) - train_size
+validation_dataset = preprocessing.CustomDataset(preprocessing.tokenize(preprocessing.create_pairs(validation_file), en_sp, es_sp, block_size))
+validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
-# Randomly shuffle data  
-random.shuffle(data)
-
-# Split data
-train_data = data[:train_size]
-val_data = data[train_size:]
 
 """
     get_batch
@@ -118,7 +119,7 @@ def estimate_loss():
     losses = torch.zeros(eval_iters)
     for k in range(eval_iters):
        X, Y = get_batch(split)
-       src_mask, target_mask = create_mask(X, Y)
+       src_mask, target_mask, c_attn_mask = create_mask(X, Y)
        logits, loss = model(X, Y, src_mask, target_mask)
        losses[k] = loss.item()
     out[split] = losses.mean()
@@ -141,11 +142,13 @@ def create_mask(src, target, seq_len=block_size):
   e_mask = (src != 0).unsqueeze(1)  # (B, 1, L)
   d_mask = (target != 0).unsqueeze(1)  # (B, 1, L)
 
+  c_mask = e_mask.expand(-1, seq_len, -1) & d_mask.expand(-1, -1, seq_len)  # (B, L, L)
+
   nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool)  # (1, L, L)
   nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
   d_mask = (d_mask & nopeak_mask)  # (B, L, L) padding false
 
-  return e_mask.to(device), d_mask.to(device)
+  return e_mask.to(device), d_mask.to(device), c_mask.to(device)
 
 
 """
@@ -176,7 +179,48 @@ class ScheduledAdam():
             np.power(self.current_steps, -0.5),
             self.current_steps * np.power(self.warm_steps, -0.5)
         ])
+    
 
+"""
+  Perform validation
+"""
+def validation(m):
+  print("Validation processing...")
+  m.eval()
+
+  valid_losses = []
+  start_time = datetime.datetime.now()
+
+  with torch.no_grad():
+    for i, batch in enumerate(tqdm(training_dataloader)):
+      xb, yb = batch[0], batch[1]
+      xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
+
+      src_mask, trg_mask, c_attn_mask = create_mask(xb, yb)
+
+      # evaluate the loss
+      output = m.forward(xb, yb, src_mask, trg_mask,c_attn_mask)
+      target_shape = yb.shape
+      loss = criterion(output.view(-1, vocab_size_y), yb.view(target_shape[0] * target_shape[1]))
+
+      valid_losses.append(loss.item())
+
+      # clears memory
+      del xb, yb, src_mask, trg_mask, output, loss
+      gc.collect() 
+      torch.cuda.empty_cache()
+
+  end_time = datetime.datetime.now()
+  validation_time = end_time - start_time
+  seconds = validation_time.seconds
+  hours = seconds // 3600
+  minutes = (seconds % 3600) // 60
+  seconds = seconds % 60
+
+  mean_valid_loss = np.mean(valid_losses)
+
+  return mean_valid_loss, f"{hours}hrs {minutes}mins {seconds}secs"
+   
 
 """
     train
@@ -193,65 +237,80 @@ def train_model(m):
             hidden_dim=n_embed,
             warm_steps=warmup_steps
         )
+    
+  best_loss = sys.float_info.max
 
-  for iter in range(max_iters):
-    # once awhile evaluate the loss on train and val sets
-    if iter % eval_interval == 0:
-      losses = estimate_loss()  # estimate loss averages the losses of multiple batches 
-      end_time = time.time()
-      training_time_seconds = time.time() - start_time
-      training_time_minutes = training_time_seconds // 60
-      training_time_seconds %= 60
-      print(f"Step: {iter} | Train loss: {losses['train']:.4f} | Val loss: {losses['val']:.4f} | Training time: {int(training_time_minutes)} minutes {int(training_time_seconds)} seconds")
+  for epoch in range(epochs):
+    m.train()
 
-      current_memory = torch.cuda.memory_allocated()
-      peak_memory = torch.cuda.max_memory_allocated()
-      print(f"Current memory usage: {current_memory / (1024 ** 2):.2f} MB")
-      print(f"Peak memory usage: {peak_memory / (1024 ** 2):.2f} MB")
+    train_losses = []
+    start_time = datetime.datetime.now()
 
-    if iter % translate_interval == 0:
-      test_src = torch.tensor(en_sp.EncodeAsIds("Hello what is your name?"), dtype=torch.long, device=device)
-      test_src = torch.cat([torch.tensor([1], dtype=torch.long, device=device), test_src, torch.tensor([2], dtype=torch.long, device=device)]) 
+    for i, batch in enumerate(tqdm(training_dataloader)):
+      xb, yb = batch[0], batch[1]
+      xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
 
-      # Pad tensors if needed
-      if test_src.size(0) < block_size:
-        padding = torch.zeros(block_size - test_src.size(0), dtype=torch.long, device=device)
-        test_src = torch.cat([test_src, padding])
+      src_mask, trg_mask, c_attn_mask = create_mask(xb, yb)
 
-      print("Hello what is your name? : ", es_sp.DecodeIds(m.generate(test_src, block_size).tolist()))
+      # evaluate the loss
+      output = m.forward(xb, yb, src_mask, trg_mask, c_attn_mask)
+      target_shape = yb.shape
+      optimizer.zero_grad()
+      loss = criterion(output.view(-1, vocab_size_y), yb.view(target_shape[0] * target_shape[1]))
+      loss.backward()
+      optimizer.step()
 
-    # clears memory
-    gc.collect() 
-    torch.cuda.empty_cache()
+      train_losses.append(loss.item())
 
-    # sample a batch of data
-    xb, yb = get_batch('train')
+      # clears memory
+      del xb, yb, src_mask, trg_mask, output, loss
+      gc.collect() 
+      torch.cuda.empty_cache()
 
-    src_mask, trg_mask = create_mask(xb, yb)
+    end_time = datetime.datetime.now()
+    training_time = end_time - start_time
+    seconds = training_time.seconds
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
 
-    # evaluate the loss
-    logits, loss = m.forward(xb, yb, src_mask, trg_mask)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
+    mean_train_loss = np.mean(train_losses)
+    print(f"#################### Epoch: {epoch} ####################")
+    print(f"Train loss: {mean_train_loss} || One epoch training time: {hours}hrs {minutes}mins {seconds}secs")
 
-  end_time = time.time()
-  training_time_seconds = end_time - start_time
-  training_time_minutes = training_time_seconds // 60
-  training_time_seconds %= 60
-  print(f"Training time: {int(training_time_minutes)} minutes {int(training_time_seconds)} seconds")
+    # calculate validation loss
+    valid_loss, valid_time = validation(m)
 
-  # save the model
-  torch.save(m.state_dict(), "models/model_two_tok.pth")
+    if valid_loss < best_loss:
+        if not os.path.exists(checkpoint_folder):
+            os.mkdir(checkpoint_folder)
 
-  torch.save({
-      'model_state_dict': m.state_dict(),
-      "epoch": iter,
-      "optimizer_state_dict": optimizer.state_dict(),
-      "loss": loss
-  }, "models/model_two_tok(1).pth")
+        best_loss = valid_loss
+        state_dict = {
+            'model_state_dict': m.state_dict(),
+            'optim_state_dict': optimizer.optimizer.state_dict(),
+            'loss': best_loss
+        }
+        torch.save(state_dict, f"{checkpoint_folder}/best_ckpt.tar")
+        print(f"***** Current best checkpoint is saved. *****")
 
+    print(f"Best valid loss: {best_loss}")
+    print(f"Valid loss: {valid_loss} || One epoch training time: {valid_time}")
 
+    # print test translation
+    test_src = torch.tensor(en_sp.EncodeAsIds("Go on."), dtype=torch.long, device=device)
+    test_src = torch.cat([torch.tensor([1], dtype=torch.long, device=device), test_src, torch.tensor([2], dtype=torch.long, device=device)]) 
+
+    # Pad tensors if needed
+    if test_src.size(0) < block_size:
+      padding = torch.zeros(block_size - test_src.size(0), dtype=torch.long, device=device)
+      test_src = torch.cat([test_src, padding])
+
+      print("Go on. : ", es_sp.DecodeIds(m.generate(test_src, block_size).tolist()))
+
+  print(f"Training finished!")
+
+      
 vocab_size_x = len(en_sp)
 vocab_size_y = len(es_sp)
 

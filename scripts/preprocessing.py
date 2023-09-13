@@ -1,5 +1,7 @@
 import torch
+import random
 import sentencepiece as spm
+from torch.utils.data import Dataset
 
 def create_markers(input_file_path, output_file_path):
     # Read input file, modify sentences, and write to output file
@@ -23,14 +25,52 @@ def create_markers(input_file_path, output_file_path):
     splits the EN and ES in a array of pairs (index 0 is en and index 1 is es)
 """
 def split_data():
-    text_file = "data\spa.txt"
+    # Specify the path to your input text file and the paths for the output files
+    input_file_path = 'data/spa_test.txt'
+    training_output_path = 'data/training_data_test.txt'
+    validation_output_path = 'data/validation_data_test.txt'
 
-    with open(text_file, "r", encoding="utf-8") as f:
+    # Define the ratio of data to be used for validation (e.g., 0.2 for 20%)
+    validation_ratio = 0.2
+
+    # Read the lines from the input file
+    with open(input_file_path, 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+
+    # Shuffle the lines randomly
+    random.shuffle(lines)
+
+    # Calculate the split point based on the validation ratio
+    split_point = int(len(lines) * validation_ratio)
+
+    # Split the data into training and validation sets
+    training_data = lines[split_point:]
+    validation_data = lines[:split_point]
+
+    # Write the training data to the training output file
+    with open(training_output_path, 'w', encoding='utf-8') as file:
+        file.writelines(training_data)
+
+    # Write the validation data to the validation output file
+    with open(validation_output_path, 'w', encoding='utf-8') as file:
+        file.writelines(validation_data)
+
+    print(f"Training data saved to {training_output_path}")
+    print(f"Validation data saved to {validation_output_path}")
+
+
+def create_pairs(filename):
+    with open(filename, "r", encoding="utf-8") as f:
         lines = f.read().split("\n")[:-1]
 
     text_pairs = []
     for line in lines:
-        eng, spa = line.split("\t")
+        try:
+            # Some code that may raise a ValueError
+            eng, spa = line.split("\t")
+        except ValueError as e:
+            print(f"Caught a ValueError: {e}")
+            print(line)
         eng = eng.lower()
         spa = spa.lower()
         text_pairs.append((eng, spa))
@@ -87,8 +127,9 @@ def tokenize(data, en_tokenizer, es_tokenizer, block_size):
 
     return tokenized_data
 
-class CustomDataset(torch.utils.data.Dataset):
+class CustomDataset(Dataset):
     def __init__(self, dataset):
+        super().__init__()
         self.dataset = dataset
 
     def __getitem__(self, index):
@@ -103,8 +144,10 @@ en_sp.Load("models/sentencepiece_model_10k_english.model")
 es_sp = spm.SentencePieceProcessor()
 es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
-test = CustomDataset(tokenize(split_data(), en_sp, es_sp, 96)) # 0 is english
-print(test.__getitem__(0))
+
+# split_data()
+# test = CustomDataset(tokenize(create_pairs("data/training_data.txt"), en_sp, es_sp, 96)) # 0 is english
+# print(test.__getitem__(0))
 
 # enc = es_sp.EncodeAsIds("¿sabés por qué pasa?")
 # enc.insert(0, 1)
@@ -124,8 +167,8 @@ print(test.__getitem__(0))
 #         print(pair[0])
 
 
-# print(en_sp.DecodeIds([5-1,  25-1, 107-1, 277-1, 393-1,  11-1, 276-1,   4-1]))
-# print(es_sp.DecodeIds([95-1,  70-1, 257-1,  65-1, 193-1,   4-1]))
+print(en_sp.DecodeIds([28,   34,    5,   11,   24,  134, 1021,    3]))
+print(es_sp.DecodeIds([8,  192, 1176,    4]))
 # print(es_sp.EncodeAsIds("¿Hola Cómo te llamas?"))
 # print(es_sp.DecodeIds([1, 13, 3, 69, 300, 25, 3, 41, 1279, 35, 1964, 12]))
 # print(tokenize(split_data(), en_sp, es_sp, 256)[0]) # 0 is english
