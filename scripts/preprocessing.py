@@ -1,3 +1,4 @@
+from constants import *
 import torch
 import random
 import sentencepiece as spm
@@ -25,11 +26,6 @@ def create_markers(input_file_path, output_file_path):
     splits the EN and ES in a array of pairs (index 0 is en and index 1 is es)
 """
 def split_data():
-    # Specify the path to your input text file and the paths for the output files
-    input_file_path = 'data/spa_test.txt'
-    training_output_path = 'data/training_data_test.txt'
-    validation_output_path = 'data/validation_data_test.txt'
-
     # Define the ratio of data to be used for validation (e.g., 0.2 for 20%)
     validation_ratio = 0.2
 

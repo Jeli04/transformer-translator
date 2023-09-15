@@ -1,24 +1,24 @@
-Hang on!	¡Espera!
-Hang on!	¡Un segundo!
-Go away!	¡Vete ya!
-Go away.	Lárguese.
-Hi.	Hola.
-Go.	Vete.
-Go away.	¡Vete de aquí!
-Relax.	Tomátelo con soda.
-I won!	¡He ganado!
-I'm 19.	Tengo diecinueve.
-Go away!	¡Salga de aquí!
-Goodbye!	¡Hasta luego!
-No way!	De ninguna manera.
-Goodbye!	Hasta la vista.
-I ran.	Corrí.
-Call me.	Llámame.
-I know.	Yo lo sé.
-Got it?	¿Entendiste?
-Listen.	Escucha.
-Go.	Váyase.
-Go away.	¡Largo!
-No way!	¡Minga!
-Get Tom.	Agarra a Tom.
+Be nice.	Sé agradable.
+Fire!	¡Fuego!
 I lied.	Mentí.
+Go away.	¡Órale!
+Hang on!	¡Espera!
+Call me.	Llamame.
+Come on.	¡Órale!
+No way!	¡De ninguna manera!
+I fell.	Me caí.
+Got it?	¿Lo pillas?
+Got it!	¡Lo tengo!
+Go away!	¡Lárgate!
+Hello!	Hola.
+Go now.	Ve ahora mismo.
+Awesome!	¡Órale!
+Jump.	Salte.
+Attack!	¡Atacad!
+Beat it.	Pírate.
+Be calm.	Mantente en calma.
+Go on.	Continúa.
+Come in.	Pase.
+Run!	¡Corre!
+No way!	¡No puede ser!
+Go away!	¡Largo!

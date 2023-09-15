@@ -1,3 +1,4 @@
+from constants import *
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -6,7 +7,6 @@ import math
 from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
-dropout = 0.2
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
 
@@ -67,7 +67,7 @@ class PositionalEncoding(nn.Module):
 class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, n_embed):
         super().__init__()
-        self.proj = nn.Linear(n_embed, n_embed)
+        self.proj = nn.Linear(n_embed, n_embed, bias=False)
         self.dropout = nn.Dropout(p=dropout)
 
         self.key = nn.Linear(n_embed, n_embed, bias=False)
@@ -104,18 +104,16 @@ class MultiHeadAttention(nn.Module):
 
         # Perform linear transformation
         q, k, v = self.query(query), self.key(key), self.value(value)
-        # k = k.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
-        # q = q.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
-        # v = v.view(B, T, self.n_embed, C // self.n_embed).transpose(1, 2)  # (B, num_heads, T, head_size)
         k = k.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         q = q.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         v = v.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
+        
+        # Perform self attention
         with torch.cuda.amp.autocast_mode.autocast(enabled=False):
             wei = q @ k.transpose(-2, -1) * (C/self.num_heads) **-0.5  # C is head size
 
             if mask!=None:
                 mask = mask.unsqueeze(1)
-                # print("wei: ", wei.shape)
                 wei = wei.masked_fill(mask==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
             # if self.counter % 250 == 0:
             #     self.visualize_attention(wei)
@@ -131,7 +129,7 @@ class MultiHeadAttention(nn.Module):
             # print(out)
         self.counter+=1
         out = self.dropout(self.proj(out))
-        return out
+        return out, wei
 
 
 """
@@ -164,8 +162,6 @@ class Decoder(nn.Module):
         self.n_embed = n_embed
         self.n_head = n_head
 
-        self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
-
         self.sa_heads = MultiHeadAttention(n_head, n_embed)
         self.ln1 = nn.LayerNorm(n_embed)
         self.cross_attention = MultiHeadAttention(n_head, n_embed) 
@@ -173,16 +169,25 @@ class Decoder(nn.Module):
         self.ffwd = FeedForward(n_embed)
         self.ln3 = nn.LayerNorm(n_embed)
 
-    def forward(self, x, enc_output, enc_mask, dec_mask, c_attn_mask):
+    def forward(self, x, enc_output, enc_mask, dec_mask, c_mask):
         B, T, C= x.shape
 
+        # masked multihead attention 
         x_1 = self.ln1(x)
-        x = x + self.sa_heads(x_1, x_1, x_1, dec_mask)
+        output, wei = self.sa_heads(x_1, x_1, x_1, dec_mask)
+        x = x + output
+
+        # cross attention
+        # torch.set_printoptions(threshold=1000)
+        # print(dec_mask[-1][-1])
+        # torch.set_printoptions(profile="default") # reset
         x_2 = self.ln2(x)
-        x = x + self.cross_attention(x_2, enc_output, enc_output, c_attn_mask)
+        output, wei = self.cross_attention(x_2, enc_output, enc_output, c_mask)
+        x = x + output
+
+        # feed forward 
         x = x + self.ffwd(self.ln3(x))
-        
-        return x
+        return x, wei
 
 """
     Encoder Class
@@ -206,10 +211,14 @@ class Encoder(nn.Module):
     def forward(self, x, enc_mask):
         B, T, C= x.shape
 
+        # masked multihead attention
         x_1 = self.ln1(x)
-        x = x + self.sa_heads(x_1, x_1, x_1, enc_mask)
+        output, wei = self.sa_heads(x_1, x_1, x_1, enc_mask)
+        x = x + output
+
+        # feed forward
         x = x + self.ffwd(self.ln2(x))
-        return x
+        return x, wei
     
 
 """
@@ -222,9 +231,35 @@ class DecoderBlock(nn.Module):
         self.n_layers = n_layers
         self.decoder_layers = nn.ModuleList([Decoder(n_embed, n_head, block_size) for _ in range(n_layers)])
 
-    def forward(self, x, enc_output, enc_mask, dec_mask, c_attn_mask):
+    def visualize_attention(self, wei):
+        # Plot attention scores
+        layer_num = 1  # Specify the layer number you want to visualize
+        head_num = 0   # Specify the attention head you want to visualize
+
+        # Get the attention scores for the specified layer and head
+        attention_map = wei[0][0].cpu().detach().numpy()
+        # print(attention_map.shape)
+
+        # Plot the attention heatmap
+        plt.figure(figsize=(10, 8))
+        plt.imshow(attention_map, cmap='viridis', aspect='auto')
+        plt.title(f"Layer {layer_num}, Head {head_num} Attention")
+        plt.xlabel("Input Tokens")
+        plt.ylabel("Output Tokens")
+
+        # Set y-axis limits to [0, seq_len]
+        seq_len = attention_map.shape[0]
+        plt.ylim(0, seq_len)
+
+        plt.colorbar()
+        plt.show()
+
+    def forward(self, x, enc_output, enc_mask, dec_mask, c_mask):
         for i in range(self.n_layers):
-            x = self.decoder_layers[i](x, enc_output, enc_mask, dec_mask, c_attn_mask)
+            x, wei = self.decoder_layers[i](x, enc_output, enc_mask, dec_mask, c_mask)
+        
+        # print(wei.shape)
+        # self.visualize_attention(wei)
         return self.ln(x)
     
 
@@ -240,7 +275,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x, enc_mask):
         for i in range(self.n_layers):
-            x = self.encoder_layers[i](x, enc_mask)
+            x, wei = self.encoder_layers[i](x, enc_mask)
         return self.ln(x)
 
 
@@ -263,7 +298,7 @@ class Transformer(nn.Module):
 
         self.lm_head = nn.Linear(n_embed, vocab_size_y) # paramters are in_features, out_features
 
-    def forward(self, x, targets, src_mask, target_mask, c_attn_mask):
+    def forward(self, x, targets, src_mask, target_mask, c_mask):
 
         x_tok_emb = self.token_embedding_table_x(x)
         y_tok_emb = self.token_embedding_table_y(targets)
@@ -274,7 +309,7 @@ class Transformer(nn.Module):
         # print("target shape: ", y_pos_enc.shape)
 
         enc_output = self.encoder_block(x_pos_enc, src_mask)
-        dec_output = self.decoder_block(y_pos_enc, enc_output, src_mask, target_mask, c_attn_mask)
+        dec_output = self.decoder_block(y_pos_enc, enc_output, src_mask, target_mask,c_mask)
 
         output = nn.LogSoftmax(dim=-1)(self.lm_head(dec_output))
 
@@ -344,17 +379,18 @@ class Transformer(nn.Module):
 
         for i in range(1, seq_len):
             trg_mask = (target != 0).unsqueeze(1)  # (B, 1, L)
-            c_attn_mask = src_mask.expand(-1, seq_len, -1) & trg_mask.expand(-1, -1, seq_len)  # (B, L, L)
+            # c_attn_mask = src_mask.expand(-1, seq_len, -1) & trg_mask.expand(-1, -1, seq_len)  # (B, L, L)
 
             nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool)  # (1, L, L)
             nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
             trg_mask = (trg_mask & nopeak_mask) # (B, L, L) padding false
 
+            c_mask = (src!=0).unsqueeze(1) * (target!=0).unsqueeze(2)  
 
             target_tok_emb = self.token_embedding_table_y(target)
             target_pos_enc = self.pos_enc(target_tok_emb)
 
-            dec_output = self.decoder_block(target_pos_enc, enc_output, src_mask, trg_mask, c_attn_mask)
+            dec_output = self.decoder_block(target_pos_enc, enc_output, src_mask, trg_mask, c_mask)
 
             output = softmax(self.lm_head(dec_output))
             output = torch.argmax(output, dim=-1) # (1, seq_len)
@@ -382,60 +418,77 @@ class Transformer(nn.Module):
         self.train()
         return target
 
-# import sentencepiece as spm
 
-# # Load SentencePiece tokenizer
-# sp = spm.SentencePieceProcessor()
-# sp.Load("models/sentencepiece_model.model")
+    def beam_search(self, src, max_len, beam_width):
+        """
+        Performs beam search for translation using a transformer model.
+        
+        Args:
+            model (nn.Module): Translation Transformer model.
+            src_input (Tensor): Source input sequence.
+            max_len (int): Maximum length of the generated translation.
+            beam_width (int): Width of the beam for search.
 
-# embedding = nn.Embedding(8000, 384)
-# print(embedding(torch.tensor(sp.Encode("hi"), dtype=torch.long)))
+        Returns:
+            List of tuples (translation, score).
+        """
+        # Ensure the model is in evaluation mode
+        self.eval()
 
-# text_x = "Hello"
-# vocab_size_x = len(sp)
-# input_x = torch.tensor(sp.encode(text_x))
+        # Encode the source input        
+        src = torch.stack([src])
+        src_mask = (src != 0).unsqueeze(1).to(device=device)  # (B, 1, L)
+        src_tok_emb = self.token_embedding_table_x(src)
+        src_pos_enc = self.pos_enc(src_tok_emb)
+        with torch.no_grad():
+            enc_output = self.encoder_block(src_pos_enc, src_mask)
 
-# text_y = "Hola"
-# vocab_size_y = len(sp)
-# input_y = torch.tensor(sp.encode(text_y))
+        # Initialize the beam search
+        beams = [(torch.LongTensor([1]), 0.0)]  # (current_translation, cumulative_score)
+        completed_translations = []
 
-# model = Transformer(n_embed, n_head, dropout, block_size, vocab_size_x, vocab_size_y, n_layer)
-# print(model(input_x, input_y))
+        for _ in range(max_len):
+            new_beams = []
 
+            for translation, score in beams:
+                # Get the last predicted token
+                last_token = translation[-1].unsqueeze(0)
 
-# text_x = "Hello" #there how are you doing"
-# chars = sorted(list(set(text_x))) # sets gets one of each value
-# stoi = {ch:i for i, ch in enumerate(chars)} # map for string to int
-# encode = lambda s : [stoi[c] for c in s]  # encodes the string into ints
-# data_x = torch.tensor(encode(text_x), dtype=torch.long)
+                # Decode the last token
+                trg_mask = self.subsequent_mask(last_token.size(-1)).type_as(enc_output)
+                c_mask = (src!=0).unsqueeze(1) * (translation!=0).unsqueeze(2)  
+                with torch.no_grad():
+                    dec_output = self.decoder_block(last_token, enc_output, src_mask, trg_mask, c_mask)
 
-# chars = sorted(list(set(text_x))) # sets gets one of each value
-# vocab_size_x = len(chars)
+                # Get the probabilities for the next token
+                prob = F.softmax(dec_output, dim=-1).squeeze(0)[-1]
 
-# text_y = "Hola " # com ó estás"
-# chars = sorted(list(set(text_y))) # sets gets one of each value
-# stoi = {ch:i for i, ch in enumerate(chars)} # map for string to int
-# encode = lambda s : [stoi[c] for c in s]  # encodes the string into ints
-# data_y = torch.tensor(encode(text_y), dtype=torch.long)
+                # Select the top beam_width candidates based on probabilities
+                topk_prob, topk_idx = prob.topk(beam_width)
+                for i in range(beam_width):
+                    new_translation = torch.cat((translation, topk_idx[i].unsqueeze(0)))
+                    new_score = score - torch.log(topk_prob[i])
+                    new_beams.append((new_translation, new_score))
 
-# chars = sorted(list(set(text_y))) # sets gets one of each value
-# vocab_size_y = len(chars)
+            # Sort and keep the top beam_width candidates
+            beams = sorted(new_beams, key=lambda x: x[1])[:beam_width]
 
-# # vocab size is different?
+            # Check for completed translations (reached EOS token)
+            for idx, (translation, score) in enumerate(beams):
+                if translation[-1] == 2:
+                    completed_translations.append((translation, score))
+                    beams.pop(idx)
 
-# vocab_size_x = 64
-# vocab_size_y = 64
+        # Sort the completed translations and return the top one
+        completed_translations = sorted(completed_translations, key=lambda x: x[1])
+        best_translation, best_score = completed_translations[0]
 
-# model = Transformer(n_embed, n_head, dropout, block_size, vocab_size_x, vocab_size_y, n_layer)
+        return best_translation.tolist(), best_score
 
-
-
-
-
-# # embedding_x = torch.tensor(sp.EncodeAsIds(text_x), dtype=torch.long)
-# # embedding_y = torch.tensor(sp.EncodeAsIds(text_y), dtype=torch.long)
-
-# # data_x = torch.cat([embedding_x, torch.zeros(n_embed - len(embedding_x))], dim=-1)
-# # data_y = torch.cat([embedding_y, torch.zeros(n_embed - len(embedding_y))], dim=-1)
-
-# # print(model(data_x, data_y))
+    # Helper function to create a subsequent mask
+    def subsequent_mask(self, size):
+        """Mask out subsequent positions."""
+        attn_shape = (1, size, size)
+        subsequent_mask = torch.triu(torch.ones(attn_shape, device=device), diagonal=1)
+        return subsequent_mask == 0
+    

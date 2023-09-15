@@ -1,3 +1,4 @@
+from constants import *
 from transformer import Transformer
 import torch.optim as optim
 import preprocessing
@@ -13,26 +14,6 @@ import os
 import numpy as np
 from torch.utils.data import DataLoader
 
-
-batch_size = 64 # number of sequences per batch
-block_size = 96 # max length of sequence/characters per sequence
-max_iters = 50000 # number of iterations to train for
-epochs = 15
-eval_iters = 200 # iterations to evaluate model performance
-eval_interval = 200 # interval to evaluate model performance
-learning_rate = 5e-4
-n_embed = 512 # embedding dimension
-d_k = 64
-d_ff = 2048
-n_head = 8 # number of heads
-head_size = n_embed // n_head # size of each head
-n_layer = 6 # number of layers
-dropout = 0.2
-translate_interval = 100
-warmup_steps = 3000
-training_file = "data/training_data_test.txt"
-validation_file = "data/validation_data_test.txt"
-checkpoint_folder = "models/checkpoints/"
 criterion = torch.nn.NLLLoss()
 
 gc.collect()
@@ -67,47 +48,6 @@ validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, sh
 
 
 """
-    get_batch
-    using the array of pairs randomly select batch size of pairs and return them
-"""
-def get_batch(split):
-    data = train_data if split == "train" else val_data
-
-    ix = torch.randint(len(data) - block_size, (batch_size,)) # generates n numbrs based on btach_size that represent an index from data, randomally choosing four places to parallel train
-
-    max_len = 0
-
-    x_tensors = []
-    y_tensors = []
-
-    # print(ix)
-    for i in ix:
-      # print("Row: ", data[i])
-      t = data[i][0]
-      # print("X:", en_sp.DecodeIds(t.tolist()))
-      x_tensors.append(t)    
-      t = data[i][1]
-      # print("Y:", es_sp.DecodeIds(t.tolist()))
-      y_tensors.append(t)
-
-    # for i in ix:
-    #   print("Row: ", data[i])
-    #   t = data[i:i+block_size][0][0]
-    #   print("X:", en_sp.DecodeIds(t.tolist()))
-    #   x_tensors.append(t)    
-    #   t = data[i:i+block_size][0][1]
-    #   print("Y:", es_sp.DecodeIds(t.tolist()))
-    #   y_tensors.append(t) 
-
-    x = torch.stack(x_tensors)      
-    y = torch.stack(y_tensors)  
-
-    x, y = x.to(device), y.to(device) # moves to GPU if available
-
-    return x, y
-
-
-"""
     estimate_loss 
     code from Andrej Karpathy's minGPT
 """
@@ -119,12 +59,41 @@ def estimate_loss():
     losses = torch.zeros(eval_iters)
     for k in range(eval_iters):
        X, Y = get_batch(split)
-       src_mask, target_mask, c_attn_mask = create_mask(X, Y)
+       src_mask, target_mask = create_mask(X, Y)
        logits, loss = model(X, Y, src_mask, target_mask)
        losses[k] = loss.item()
     out[split] = losses.mean()
   model.train()
   return out
+
+
+
+"""
+  Create subsequent mask
+"""
+def create_subsequent_mask(target):
+  """
+  if target length is 5 and diagonal is 1, this function returns
+      [[0, 1, 1, 1, 1],
+        [0, 0, 1, 1, 1],
+        [0, 0, 0, 1, 1],
+        [0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0]]
+  :param target: [batch size, target length]
+  :return:
+  """
+  batch_size, target_length = target.size()
+
+  # torch.triu returns the upper triangular part of a matrix based on user defined diagonal
+  subsequent_mask = torch.tril(torch.ones(target_length, target_length), diagonal=1).bool().to(device)
+  # subsequent_mask = [target length, target length]
+
+  # repeat subsequent_mask 'batch size' times to cover all data instances in the batch
+  subsequent_mask = subsequent_mask.unsqueeze(0).repeat(batch_size, 1, 1)
+  # subsequent_mask = [batch size, target length, target length]
+
+  return subsequent_mask
+
 
 """
   Create mask 
@@ -142,11 +111,16 @@ def create_mask(src, target, seq_len=block_size):
   e_mask = (src != 0).unsqueeze(1)  # (B, 1, L)
   d_mask = (target != 0).unsqueeze(1)  # (B, 1, L)
 
-  c_mask = e_mask.expand(-1, seq_len, -1) & d_mask.expand(-1, -1, seq_len)  # (B, L, L)
+  c_mask = (src!=0).unsqueeze(1) * (target!=0).unsqueeze(2)  
 
-  nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool)  # (1, L, L)
+  nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool).to(device)  # (1, L, L)
+  e_mask = e_mask & nopeak_mask  # (B, L, L) padding false
   nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
   d_mask = (d_mask & nopeak_mask)  # (B, L, L) padding false
+
+  # print("c_mask: ", c_mask.shape)
+  # print("e_mask: ", e_mask.shape)
+  # print("d_mask: ", d_mask.shape)
 
   return e_mask.to(device), d_mask.to(device), c_mask.to(device)
 
@@ -168,6 +142,8 @@ class ScheduledAdam():
         
         for p in self.optimizer.param_groups:
             p['lr'] = lr
+
+        # print(f"Current learning rate: {lr} || Current step: {self.current_steps}")
 
         self.optimizer.step()
         
@@ -196,10 +172,17 @@ def validation(m):
       xb, yb = batch[0], batch[1]
       xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
 
-      src_mask, trg_mask, c_attn_mask = create_mask(xb, yb)
+      src_mask, trg_mask, c_mask = create_mask(xb, yb)
+      # print("\n")
+      # print(en_sp.DecodeIds(xb[0].tolist()))
+      # print(xb[0])
+      # print(es_sp.DecodeIds(yb[0].tolist()))
+      # print(yb[0])
+      # print("src_mask: ", src_mask[0])
+      # print("trg_mask: ", trg_mask[0])
 
       # evaluate the loss
-      output = m.forward(xb, yb, src_mask, trg_mask,c_attn_mask)
+      output = m.forward(xb, yb, src_mask, trg_mask, c_mask)
       target_shape = yb.shape
       loss = criterion(output.view(-1, vocab_size_y), yb.view(target_shape[0] * target_shape[1]))
 
@@ -209,6 +192,7 @@ def validation(m):
       del xb, yb, src_mask, trg_mask, output, loss
       gc.collect() 
       torch.cuda.empty_cache()
+
 
   end_time = datetime.datetime.now()
   validation_time = end_time - start_time
@@ -250,10 +234,10 @@ def train_model(m):
       xb, yb = batch[0], batch[1]
       xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
 
-      src_mask, trg_mask, c_attn_mask = create_mask(xb, yb)
+      src_mask, trg_mask, c_mask = create_mask(xb, yb)
 
       # evaluate the loss
-      output = m.forward(xb, yb, src_mask, trg_mask, c_attn_mask)
+      output = m.forward(xb, yb, src_mask, trg_mask, c_mask)
       target_shape = yb.shape
       optimizer.zero_grad()
       loss = criterion(output.view(-1, vocab_size_y), yb.view(target_shape[0] * target_shape[1]))
@@ -266,6 +250,8 @@ def train_model(m):
       del xb, yb, src_mask, trg_mask, output, loss
       gc.collect() 
       torch.cuda.empty_cache()
+
+    print("Learning rate: ", optimizer.optimizer.param_groups[0]['lr'])
 
     end_time = datetime.datetime.now()
     training_time = end_time - start_time
@@ -307,6 +293,8 @@ def train_model(m):
       test_src = torch.cat([test_src, padding])
 
       print("Go on. : ", es_sp.DecodeIds(m.generate(test_src, block_size).tolist()))
+      print("Go on. : ", es_sp.DecodeIds(m.beam_search(test_src, block_size, beam_length).tolist()))
+
 
   print(f"Training finished!")
 

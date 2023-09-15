@@ -1,97 +1,97 @@
-Help!	¡Ayuda!
-He ran.	Él corrió.
-Be nice.	Sé agradable.
-Go away!	¡Lárgate!
-Hop in.	Métete adentro.
-Go home.	Vete a casa.
-Get out.	Salte.
-We won.	Ganamos.
-No way!	¡Imposible!
-Be cool.	Estate tranquilo.
-No way!	¡De ninguna manera!
-Thanks.	¡Gracias!
-Ask Tom.	Pregúntale a Tom.
-I lost.	Perdí.
-Wait.	Esperen.
-Call me.	Llamadme.
-Call me.	Llamame.
-Go away.	¡Órale!
-Thanks.	Gracias.
-Try it.	Pruébalo.
-Hang on.	Agarra fuertemente.
-Go away!	¡Vete de aquí!
-I left.	Salí.
-Come in.	¡Entren!
-Stop!	¡Parad!
-Go away.	Váyase.
-Get out.	Salid.
-I quit.	Dimito.
-Go.	Ve.
-Oh no!	¡Oh, no!
+I ran.	Corrí.
 Go away.	¡Vete ya!
-Drop it!	Suéltalo.
-Stop!	¡Para!
-Be fair.	Sé justo.
-Go slow.	Vaya despacio.
-Jump!	¡Salta!
-We try.	Lo procuramos.
-No way!	¡Ni cagando!
-Listen.	Escuche.
-Wait!	¡Espera!
-I'm up.	Estoy levantado.
-Come in.	Pase.
-Hang on!	¡Espera un momento!
-I ran.	Corría.
-Go away!	¡Órale!
-Really?	¿En serio?
-Get out.	Salgan.
-Goodbye!	¡Chau!
-Hello!	Hola.
-Attack!	¡Al ataque!
-Fire!	¡Fuego!
-Be calm.	Mantente en calma.
-No way!	¡Mangos!
-Listen.	Escuchen.
-Go on.	Continúe.
-Stop!	¡Pare!
-Go away!	¡A la calle!
-Go on.	Continúa.
-No way!	¡Ni en pedo!
-Attack!	¡Atacad!
-Come on.	Ándale.
-Get out!	Bájate.
-Fire!	¡Incendio!
-I try.	Lo intento.
-Get up.	Levanta.
-Got it?	¿Lo pillas?
-No way!	¡No puede ser!
-No way!	¡De eso nada!
-Beat it.	Pírate.
-Who?	¿Quién?
-Come on!	¡Órale!
-Smile.	Sonríe.
-Really?	¿La verdad?
-Jump.	Salte.
-Get out.	Salí.
-I fell.	Me caí.
-Awesome!	¡Órale!
-Run.	Corred.
-I quit.	Renuncié.
-Come in.	Entre.
-Run!	¡Corre!
-Help!	¡Auxilio!
-No way!	¡De ningún modo!
-Hug me.	Abrázame.
-Got it!	¡Lo tengo!
+Got it?	¿Entendiste?
+Get Tom.	Agarra a Tom.
+Go.	Váyase.
+I'm 19.	Tengo diecinueve.
 Go away.	¡Lárgate!
-Why me?	¿Por qué yo?
-Go now.	Ve ahora mismo.
-Get out.	Sal.
-Go away!	¡Largo!
-Call us.	Llámanos.
-I work.	Estoy trabajando.
 Fire!	¡Disparad!
-Help!	¡Socorro! ¡Auxilio!
+I quit.	Renuncié.
+Come on!	¡Órale!
+Go away!	¡A la calle!
+I quit.	Dimito.
+Thanks.	¡Gracias!
+Come in.	¡Entren!
+Who?	¿Quién?
+Relax.	Tomátelo con soda.
+Call me.	Llámame.
+No way!	¡Ni cagando!
+Stop!	¡Parad!
+No way!	¡Imposible!
+I lost.	Perdí.
+Attack!	¡Al ataque!
+Go away!	¡Órale!
+Call us.	Llámanos.
+Go away!	¡Vete ya!
 Go.	Vaya.
-Come on.	¡Órale!
+Fire!	¡Incendio!
+Hop in.	Métete adentro.
+Hang on.	Agarra fuertemente.
+Hug me.	Abrázame.
+Oh no!	¡Oh, no!
+Get out.	Salí.
+Listen.	Escucha.
+He ran.	Él corrió.
+I won!	¡He ganado!
+I try.	Lo intento.
+Go away.	Váyase.
+I work.	Estoy trabajando.
+No way!	¡De ningún modo!
+Hang on!	¡Un segundo!
+Ask Tom.	Pregúntale a Tom.
+Be cool.	Estate tranquilo.
+Get up.	Levanta.
+We won.	Ganamos.
+No way!	De ninguna manera.
+Really?	¿La verdad?
+Goodbye!	¡Chau!
+Really?	¿En serio?
+Wait!	¡Espera!
+I left.	Salí.
+I ran.	Corría.
+Get out!	Bájate.
+Goodbye!	¡Hasta luego!
+Wait.	Esperen.
+Be fair.	Sé justo.
+Get out.	Salid.
+Help!	¡Socorro! ¡Auxilio!
+Thanks.	Gracias.
+Listen.	Escuchen.
+Jump!	¡Salta!
+Smile.	Sonríe.
+Come in.	Entre.
+Go.	Ve.
+Come on.	Ándale.
+No way!	¡Mangos!
+Get out.	Salgan.
+Go.	Vete.
+Get out.	Salte.
+Go home.	Vete a casa.
+I know.	Yo lo sé.
 Be kind.	Sean gentiles.
+Help!	¡Ayuda!
+Go slow.	Vaya despacio.
+Call me.	Llamadme.
+Why me?	¿Por qué yo?
+Hi.	Hola.
+Try it.	Pruébalo.
+We try.	Lo procuramos.
+Hang on!	¡Espera un momento!
+Go on.	Continúe.
+Drop it!	Suéltalo.
+Get out.	Sal.
+Go away.	¡Vete de aquí!
+Stop!	¡Pare!
+Help!	¡Auxilio!
+Go away!	¡Vete de aquí!
+Stop!	¡Para!
+I'm up.	Estoy levantado.
+Go away.	Lárguese.
+Go away.	¡Largo!
+No way!	¡De eso nada!
+Listen.	Escuche.
+No way!	¡Ni en pedo!
+No way!	¡Minga!
+Go away!	¡Salga de aquí!
+Goodbye!	Hasta la vista.
+Run.	Corred.

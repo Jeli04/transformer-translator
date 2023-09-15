@@ -1,22 +1,10 @@
+from constants import *
 import torch
 import sentencepiece as spm
 from transformer import Transformer
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
-
-batch_size = 64 # number of sequences per batch
-block_size = 96 # max length of sequence/characters per sequence
-max_iters = 2000 # number of iterations to train for
-eval_iters = 200 # iterations to evaluate model performance
-eval_interval = 250 # interval to evaluate model performance
-learning_rate = 1e-6
-n_embed = 384 # embedding dimension
-n_head = 8 # number of heads
-head_size = n_embed // n_head # size of each head
-n_layer = 6 # number of layers
-dropout = 0.2
-translate_interval = 100
 
 en_sp = spm.SentencePieceProcessor()
 en_sp.Load("models/sentencepiece_model_10k_english2.model")
