@@ -16,10 +16,10 @@ vocab_size_x = len(en_sp)
 vocab_size_y = len(es_sp)
 
 model = Transformer(n_embed, n_head, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
-checkpoint = torch.load("models/model_two_tok.pth", strict=False)
-model.load_state_dict(checkpoint)
+checkpoint = torch.load("models/checkpoints/best_ckpt.tar")
+model.load_state_dict(checkpoint['model_state_dict'])
 
-en = torch.tensor(en_sp.EncodeAsIds("How are you?"), dtype=torch.long, device=device)
+en = torch.tensor(en_sp.EncodeAsIds("Hello?"), dtype=torch.long, device=device)
 es = torch.tensor(es_sp.EncodeAsIds("Cómo estás"), dtype=torch.long, device=device)
 
 print(en)

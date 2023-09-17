@@ -14,13 +14,14 @@ import os
 import numpy as np
 from torch.utils.data import DataLoader
 
-criterion = torch.nn.NLLLoss()
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+torch.cuda.set_device(0)
+
+criterion = torch.nn.CrossEntropyLoss(ignore_index=0)
+criterion.to(device)
 
 gc.collect()
 torch.cuda.empty_cache()
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-torch.cuda.set_device(0)
 
 # Storing ID of current CUDA device
 cuda_id = torch.cuda.current_device()
@@ -32,11 +33,7 @@ print(f"Name of current CUDA device:{torch.cuda.get_device_name(cuda_id)}")
 """
     Split and Tokenize Data
 """
-en_sp = spm.SentencePieceProcessor()
-en_sp.Load("models/sentencepiece_model_10k_english2.model")
 
-es_sp = spm.SentencePieceProcessor()
-es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
 split_data = preprocessing.split_data() # split data into training and validation files
 
@@ -210,17 +207,18 @@ def validation(m):
     train
 """
 def train_model(m):
+  print("Training processing...")
   # print the number of parameters in the model
   print(sum(p.numel() for p in m.parameters())/1e6, "M paramters")
 
   # create a PyTorch optimizer
   optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
 
-  optimizer = ScheduledAdam(
-            optim.Adam(m.parameters(), betas=(0.9, 0.98), eps=1e-9),
-            hidden_dim=n_embed,
-            warm_steps=warmup_steps
-        )
+  # optimizer = ScheduledAdam(
+  #           optim.Adam(m.parameters(), betas=(0.9, 0.98), eps=1e-9),
+  #           hidden_dim=n_embed,
+  #           warm_steps=warmup_steps
+  #       )
     
   best_loss = sys.float_info.max
 
@@ -238,10 +236,13 @@ def train_model(m):
 
       # evaluate the loss
       output = m.forward(xb, yb, src_mask, trg_mask, c_mask)
-      target_shape = yb.shape
       optimizer.zero_grad()
-      loss = criterion(output.view(-1, vocab_size_y), yb.view(target_shape[0] * target_shape[1]))
+      # print("output: ", output[:, 1:, :].contiguous().view(-1, output.shape[-1]).shape)
+      # print("yb: ", yb[:, 1:].contiguous().view(-1).shape)
+      loss = criterion(output[:, 1:, :].contiguous().view(-1, output.shape[-1]), yb[:, 1:].contiguous().view(-1))
+
       loss.backward()
+      torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0)
       optimizer.step()
 
       train_losses.append(loss.item())
@@ -251,7 +252,8 @@ def train_model(m):
       gc.collect() 
       torch.cuda.empty_cache()
 
-    print("Learning rate: ", optimizer.optimizer.param_groups[0]['lr'])
+    # print("Learning rate: ", optimizer.optimizer.param_groups[0]['lr'])
+    print("Learning rate: ", optimizer.param_groups[0]['lr'])
 
     end_time = datetime.datetime.now()
     training_time = end_time - start_time
@@ -274,7 +276,7 @@ def train_model(m):
         best_loss = valid_loss
         state_dict = {
             'model_state_dict': m.state_dict(),
-            'optim_state_dict': optimizer.optimizer.state_dict(),
+            'optim_state_dict': optimizer.state_dict(),
             'loss': best_loss
         }
         torch.save(state_dict, f"{checkpoint_folder}/best_ckpt.tar")

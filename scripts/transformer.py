@@ -6,6 +6,9 @@ import numpy as np
 import math
 from torch.nn import functional as F
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.font_manager as fm
+
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
@@ -79,23 +82,20 @@ class MultiHeadAttention(nn.Module):
 
         self.counter = 0
 
-    def visualize_attention(self, wei):
-        # Plot attention scores
-        layer_num = 1  # Specify the layer number you want to visualize
-        head_num = 0   # Specify the attention head you want to visualize
+    def self_attention(self, q, k, v, mask=None):
+        atten_wei = q @ k.transpose(-2, -1)
+        atten_wei = atten_wei / math.sqrt(d_k)  
 
-        # Get the attention scores for the specified layer and head
-        attention_map = wei[0][0].cpu().detach().numpy()
-        # print(attention_map.shape)
+        if mask!=None:
+            mask = mask.unsqueeze(1)
+            atten_wei = atten_wei.masked_fill(mask==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
 
-        # Plot the attention heatmap
-        plt.figure(figsize=(10, 8))
-        plt.imshow(attention_map, cmap='viridis', aspect='auto')
-        plt.title(f"Layer {layer_num}, Head {head_num} Attention")
-        plt.xlabel("Input Tokens")
-        plt.ylabel("Output Tokens")
-        plt.colorbar()
-        plt.show()
+        atten_wei = F.softmax(atten_wei, dim=-1)  # normalize
+        atten_values = self.dropout(atten_wei)
+
+        atten_values = atten_values @ v
+
+        return atten_values, atten_wei
 
 
     def forward(self, query, key, value, mask=None):
@@ -108,28 +108,15 @@ class MultiHeadAttention(nn.Module):
         q = q.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         v = v.view(B, -1, self.num_heads, self.n_embed // self.num_heads).transpose(1, 2)  # (B, num_heads, T, head_size)
         
-        # Perform self attention
-        with torch.cuda.amp.autocast_mode.autocast(enabled=False):
-            wei = q @ k.transpose(-2, -1) * (C/self.num_heads) **-0.5  # C is head size
+        # perform self attention
+        atten_values, atten_wei = self.self_attention(q, k, v, mask)
 
-            if mask!=None:
-                mask = mask.unsqueeze(1)
-                wei = wei.masked_fill(mask==0, -1 * 1e9) # mask out the upper triangle (B, T, T)
-            # if self.counter % 250 == 0:
-            #     self.visualize_attention(wei)
+        # out = out.transpose(1, 2).contiguous().view(B,T,C)  # re-assemble all head outputs side by side after spliting into batches
+        atten_values = atten_values.transpose(1, 2)\
+            .contiguous().view(query.shape[0], -1, self.n_embed) # (B, L, d_model)            
 
-            wei = F.softmax(wei, dim=-1)  # normalize
-
-            out = wei @ v
-
-            # out = out.transpose(1, 2).contiguous().view(B,T,C)  # re-assemble all head outputs side by side after spliting into batches
-            out = out.transpose(1, 2)\
-            .contiguous().view(query.shape[0], -1, self.n_embed) # (B, L, d_model)            # if mask==None: print("Encoder: ")
-            # else: print("Decoder: ")
-            # print(out)
-        self.counter+=1
-        out = self.dropout(self.proj(out))
-        return out, wei
+        atten_values = self.dropout(self.proj(atten_values))
+        return atten_values, atten_wei
 
 
 """
@@ -178,11 +165,8 @@ class Decoder(nn.Module):
         x = x + output
 
         # cross attention
-        # torch.set_printoptions(threshold=1000)
-        # print(dec_mask[-1][-1])
-        # torch.set_printoptions(profile="default") # reset
         x_2 = self.ln2(x)
-        output, wei = self.cross_attention(x_2, enc_output, enc_output, c_mask)
+        output, wei = self.cross_attention(x_2, enc_output, enc_output, enc_mask)
         x = x + output
 
         # feed forward 
@@ -231,36 +215,12 @@ class DecoderBlock(nn.Module):
         self.n_layers = n_layers
         self.decoder_layers = nn.ModuleList([Decoder(n_embed, n_head, block_size) for _ in range(n_layers)])
 
-    def visualize_attention(self, wei):
-        # Plot attention scores
-        layer_num = 1  # Specify the layer number you want to visualize
-        head_num = 0   # Specify the attention head you want to visualize
-
-        # Get the attention scores for the specified layer and head
-        attention_map = wei[0][0].cpu().detach().numpy()
-        # print(attention_map.shape)
-
-        # Plot the attention heatmap
-        plt.figure(figsize=(10, 8))
-        plt.imshow(attention_map, cmap='viridis', aspect='auto')
-        plt.title(f"Layer {layer_num}, Head {head_num} Attention")
-        plt.xlabel("Input Tokens")
-        plt.ylabel("Output Tokens")
-
-        # Set y-axis limits to [0, seq_len]
-        seq_len = attention_map.shape[0]
-        plt.ylim(0, seq_len)
-
-        plt.colorbar()
-        plt.show()
 
     def forward(self, x, enc_output, enc_mask, dec_mask, c_mask):
         for i in range(self.n_layers):
             x, wei = self.decoder_layers[i](x, enc_output, enc_mask, dec_mask, c_mask)
         
-        # print(wei.shape)
-        # self.visualize_attention(wei)
-        return self.ln(x)
+        return self.ln(x), wei
     
 
 """
@@ -298,6 +258,35 @@ class Transformer(nn.Module):
 
         self.lm_head = nn.Linear(n_embed, vocab_size_y) # paramters are in_features, out_features
 
+    def display_attention(self, candidate, translation, attention):
+        """
+        displays the model's attention over the source sentence for each target token generated.
+        Args:
+            candidate: (list) tokenized source tokens
+            translation: (list) predicted target translation tokens
+            attention: a tensor containing attentions scores
+        Returns:
+        """
+        # attention = [target length, source length]
+
+        attention = attention.cpu().detach().numpy()
+        # attention = [target length, source length]
+
+
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111)
+
+        ax.matshow(attention, cmap='bone')
+        ax.tick_params(labelsize=15)
+        ax.set_xticklabels([''] + [t for t in candidate.tolist()], rotation=45)
+        ax.set_yticklabels([''] + [es_sp.DecodeIds(t) for t in translation.tolist()])
+
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+        plt.show()
+        plt.close()
+
     def forward(self, x, targets, src_mask, target_mask, c_mask):
 
         x_tok_emb = self.token_embedding_table_x(x)
@@ -309,7 +298,9 @@ class Transformer(nn.Module):
         # print("target shape: ", y_pos_enc.shape)
 
         enc_output = self.encoder_block(x_pos_enc, src_mask)
-        dec_output = self.decoder_block(y_pos_enc, enc_output, src_mask, target_mask,c_mask)
+        dec_output, wei = self.decoder_block(y_pos_enc, enc_output, src_mask, target_mask,c_mask)
+        # print("attention weight shape", wei.shape)
+        # self.display_attention(x[0], targets[0], wei[0][-1])
 
         output = nn.LogSoftmax(dim=-1)(self.lm_head(dec_output))
 
@@ -390,8 +381,7 @@ class Transformer(nn.Module):
             target_tok_emb = self.token_embedding_table_y(target)
             target_pos_enc = self.pos_enc(target_tok_emb)
 
-            dec_output = self.decoder_block(target_pos_enc, enc_output, src_mask, trg_mask, c_mask)
-
+            dec_output, wei = self.decoder_block(target_pos_enc, enc_output, src_mask, trg_mask, c_mask)
             output = softmax(self.lm_head(dec_output))
             output = torch.argmax(output, dim=-1) # (1, seq_len)
 
@@ -412,7 +402,7 @@ class Transformer(nn.Module):
 
             if last_word_id == 2:
                 break
-
+        self.display_attention(src[0], target[0], wei[0][-1])
         print(target[0])
         dropout = 0.2 # turn dropout back on
         self.train()
@@ -458,7 +448,7 @@ class Transformer(nn.Module):
                 trg_mask = self.subsequent_mask(last_token.size(-1)).type_as(enc_output)
                 c_mask = (src!=0).unsqueeze(1) * (translation!=0).unsqueeze(2)  
                 with torch.no_grad():
-                    dec_output = self.decoder_block(last_token, enc_output, src_mask, trg_mask, c_mask)
+                    dec_output, wei = self.decoder_block(last_token, enc_output, src_mask, trg_mask, None)
 
                 # Get the probabilities for the next token
                 prob = F.softmax(dec_output, dim=-1).squeeze(0)[-1]

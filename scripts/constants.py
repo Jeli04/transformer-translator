@@ -4,7 +4,7 @@ max_iters = 50000 # number of iterations to train for
 epochs = 15
 eval_iters = 200 # iterations to evaluate model performance
 eval_interval = 200 # interval to evaluate model performance
-learning_rate = 1e-4
+learning_rate = 1e-5
 n_embed = 512 # embedding dimension
 d_k = 64
 d_model = 512 # dimension of model
@@ -24,3 +24,10 @@ checkpoint_folder = "models/checkpoints/"
 input_file_path = 'data/spa.txt'
 training_output_path = 'data/training_data.txt'
 validation_output_path = 'data/validation_data.txt'
+
+import sentencepiece as spm
+en_sp = spm.SentencePieceProcessor()
+en_sp.Load("models/sentencepiece_model_10k_english2.model")
+
+es_sp = spm.SentencePieceProcessor()
+es_sp.Load("models/sentencepiece_model_10k_spanish.model")
