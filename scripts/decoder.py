@@ -17,8 +17,10 @@ class Decoder(nn.Module):
 
         self.sa_heads = MultiHeadAttention(n_head, n_embed)
         self.ln1 = nn.LayerNorm(n_embed, eps=1e-6)
+
         self.cross_attention = MultiHeadAttention(n_head, n_embed) 
         self.ln2 = nn.LayerNorm(n_embed, eps=1e-6)
+         
         self.ffwd = FeedForward(n_embed)
         self.ln3 = nn.LayerNorm(n_embed, eps=1e-6)
         self.dropout = nn.Dropout(p=dropout)

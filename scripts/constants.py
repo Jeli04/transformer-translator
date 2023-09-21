@@ -1,4 +1,4 @@
-batch_size = 64 # number of sequences per batch
+batch_size = 48 # number of sequences per batch
 block_size = 96 # max length of sequence/characters per sequence
 seq_len = 96
 max_iters = 50000 # number of iterations to train for

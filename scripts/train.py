@@ -35,7 +35,7 @@ print(f"Name of current CUDA device:{torch.cuda.get_device_name(cuda_id)}")
 """
 
 
-split_data = preprocessing.split_data() # split data into training and validation files
+preprocessing.split_data() # split data into training and validation files
 
 training_dataset = preprocessing.CustomDataset(preprocessing.tokenize(preprocessing.create_pairs(training_file), en_sp, es_sp, block_size))
 training_dataloader = DataLoader(training_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -166,8 +166,8 @@ def validation(m):
 
   with torch.no_grad():
     for i, batch in enumerate(tqdm(validation_dataloader)):
-      xb, yb = batch[0], batch[1]
-      xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
+      xb, yb, yb_out = batch[0], batch[1], batch[2]
+      xb, yb, yb_out = xb.to(device), yb.to(device), yb_out.to(device) # moves to GPU if available
 
       src_mask, trg_mask, c_mask = create_mask(xb, yb)
       # print("\n")
@@ -180,7 +180,10 @@ def validation(m):
 
       # evaluate the loss
       output = m.forward(xb, yb, src_mask, trg_mask, c_mask)
-      loss = criterion(output[:, 1:, :].contiguous().view(-1, output.shape[-1]), yb[:, 1:].contiguous().view(-1))
+      # loss = criterion(output[:, 1:, :].contiguous().view(-1, output.shape[-1]), yb[:, 1:].contiguous().view(-1))
+      loss = criterion(output.view(-1, vocab_size_x),
+                    yb_out.view(yb_out.shape[0] * yb_out.shape[1])
+                )
 
       valid_losses.append(loss.item())
 
@@ -234,8 +237,8 @@ def train_model(m):
     start_time = datetime.datetime.now()
 
     for i, batch in enumerate(tqdm(training_dataloader)):
-      xb, yb = batch[0], batch[1]
-      xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
+      xb, yb, yb_out = batch[0], batch[1], batch[2]
+      xb, yb, yb_out = xb.to(device), yb.to(device), yb_out.to(device) # moves to GPU if available
 
       src_mask, trg_mask, c_mask = create_mask(xb, yb)
 
@@ -244,8 +247,11 @@ def train_model(m):
       optimizer.zero_grad()
       # print("output: ", output[:, 1:, :].contiguous().view(-1, output.shape[-1]).shape)
       # print("yb: ", yb[:, 1:].contiguous().view(-1).shape)
-      loss = criterion(output[:, 1:, :].contiguous().view(-1, output.shape[-1]), yb[:, 1:].contiguous().view(-1))
-
+      # loss = criterion(output[:, 1:, :].contiguous().view(-1, output.shape[-1]), yb[:, 1:].contiguous().view(-1))
+      loss = criterion(output.view(-1, vocab_size_x),
+                    yb_out.view(yb_out.shape[0] * yb_out.shape[1])
+                )
+      
       loss.backward()
       torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0)
       optimizer.step()
@@ -292,7 +298,7 @@ def train_model(m):
 
     # print test translation
     test_src = torch.tensor(en_sp.EncodeAsIds("Go on."), dtype=torch.long, device=device)
-    test_src = torch.cat([torch.tensor([1], dtype=torch.long, device=device), test_src, torch.tensor([2], dtype=torch.long, device=device)]) 
+    test_src = torch.cat([test_src, torch.tensor([2], dtype=torch.long, device=device)]) 
 
     # Pad tensors if needed
     if test_src.size(0) < block_size:

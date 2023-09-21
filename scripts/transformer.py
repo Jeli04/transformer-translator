@@ -60,9 +60,9 @@ class Transformer(nn.Module):
 
         plt.close()
 
-    def forward(self, x, targets, src_mask, target_mask, c_mask):
+    def forward(self, src, targets, src_mask, target_mask, c_mask):
 
-        x_tok_emb = self.token_embedding_table_x(x)
+        x_tok_emb = self.token_embedding_table_x(src)
         y_tok_emb = self.token_embedding_table_y(targets)
 
         x_pos_enc = self.pos_enc(x_tok_emb)
@@ -140,16 +140,13 @@ class Transformer(nn.Module):
             output = torch.argmax(output, dim=-1) # (1, seq_len)
 
             last_word_id = output[0][i].item()
-            # if last_word_id == 0:
-                # torch.set_printoptions(threshold=100_000)
-                # print(output.dtype)
-                # torch.set_printoptions(profile="default") # reset
-
             target[0][i] = last_word_id
             target_len = i
 
             if last_word_id == 2:
+                print("Ending...")
                 break
+             
         self.display_attention(src[0], target[0], wei[0][-1])
         print(target[0])
         dropout = 0.2 # turn dropout back on

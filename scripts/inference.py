@@ -15,15 +15,15 @@ model = Transformer(n_embed, n_head, block_size, vocab_size_x, vocab_size_y, n_l
 checkpoint = torch.load("models/checkpoints/best_ckpt.tar")
 model.load_state_dict(checkpoint['model_state_dict'])
 
-en = torch.tensor(en_sp.EncodeAsIds("Perhaps it will rain tomorrow?"), dtype=torch.long, device=device)
+en = torch.tensor(en_sp.EncodeAsIds("Whats up"), dtype=torch.long, device=device)
 es = torch.tensor(es_sp.EncodeAsIds("Cómo estás"), dtype=torch.long, device=device)
 
-print(en)
-print(es)
+# print(en)
+# print(es)
 
 bos = es_sp.bos_id()  
 eos = es_sp.eos_id()
-en = torch.cat([torch.tensor([bos], device=device), en, torch.tensor([eos], device=device)]) 
+en = torch.cat([en, torch.tensor([eos], device=device)]) 
 
 len1 = en.size(0)
 len2 = 96   # block size

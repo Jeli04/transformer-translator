@@ -98,23 +98,26 @@ def tokenize(data, en_tokenizer, es_tokenizer, block_size):
         es = torch.tensor(es_tokenizer.EncodeAsIds(row[1]), dtype=torch.long)
 
         # Add BOS and EOS
-        en = torch.cat([torch.tensor([bos]), en, torch.tensor([eos])])
-        es = torch.cat([torch.tensor([bos]), es, torch.tensor([eos])])
+        en_input = torch.cat([en, torch.tensor([eos])])
+        es_input = torch.cat([torch.tensor([bos]), es])
+        es_output = torch.cat([es, torch.tensor([eos])])
 
-        len1 = en.size(0)
-        len2 = es.size(0)
+        len1 = en_input.size(0)
+        len2 = es_input.size(0)
 
         # Pad tensors if needed
         if len1 < block_size:
             padding = torch.zeros(block_size - len1, dtype=torch.long)
-            en = torch.cat([en, padding])
+            en_input = torch.cat([en_input, padding])
 
         if len2 < block_size:
             padding = torch.zeros(block_size - len2, dtype=torch.long)
-            es = torch.cat([es, padding])
+            es_input = torch.cat([es_input, padding])
+            es_output = torch.cat([es_output, padding])
+
 
         # Concatenate en and es along a new dimension (1)
-        combined_tensor = torch.cat([en.unsqueeze(0), es.unsqueeze(0)], dim=0)
+        combined_tensor = torch.cat([en_input.unsqueeze(0), es_input.unsqueeze(0), es_output.unsqueeze(0)], dim=0)
 
         tokenized_data.append(combined_tensor)
 
@@ -129,16 +132,16 @@ class CustomDataset(Dataset):
         self.dataset = dataset
 
     def __getitem__(self, index):
-        return self.dataset[index][0], self.dataset[index][1]
+        return self.dataset[index][0], self.dataset[index][1], self.dataset[index][2]
 
     def __len__(self):
         return len(self.dataset)
 
 # en_sp = spm.SentencePieceProcessor()
-# en_sp.Load("models/sentencepiece_model_10k_english.model")
+# en_sp.Load("models/sp/sentencepiece_model_10k_english2.model")
 
 # es_sp = spm.SentencePieceProcessor()
-# es_sp.Load("models/sentencepiece_model_10k_spanish.model")
+# es_sp.Load("models/sp/sentencepiece_model_10k_spanish.model")
 
 
 # split_data()

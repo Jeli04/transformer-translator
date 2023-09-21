@@ -5,3 +5,5 @@
 tensor.txt
 tensor_data.txt
 /graphs/
+/data/training_data.txt
+/data/validation_data.txt
