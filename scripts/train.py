@@ -111,7 +111,7 @@ def create_mask(src, target, seq_len=block_size):
   c_mask = (src!=0).unsqueeze(1) * (target!=0).unsqueeze(2)  
 
   nopeak_mask = torch.ones([1, seq_len, seq_len], dtype=torch.bool).to(device)  # (1, L, L)
-  e_mask = e_mask & nopeak_mask  # (B, L, L) padding false
+  # e_mask = e_mask & nopeak_mask  # (B, L, L) padding false
   nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
   d_mask = (d_mask & nopeak_mask)  # (B, L, L) padding false
 
@@ -165,7 +165,7 @@ def validation(m):
   start_time = datetime.datetime.now()
 
   with torch.no_grad():
-    for i, batch in enumerate(tqdm(training_dataloader)):
+    for i, batch in enumerate(tqdm(validation_dataloader)):
       xb, yb = batch[0], batch[1]
       xb, yb = xb.to(device), yb.to(device) # moves to GPU if available
 
@@ -180,8 +180,7 @@ def validation(m):
 
       # evaluate the loss
       output = m.forward(xb, yb, src_mask, trg_mask, c_mask)
-      target_shape = yb.shape
-      loss = criterion(output.view(-1, vocab_size_y), yb.view(target_shape[0] * target_shape[1]))
+      loss = criterion(output[:, 1:, :].contiguous().view(-1, output.shape[-1]), yb[:, 1:].contiguous().view(-1))
 
       valid_losses.append(loss.item())
 
@@ -208,11 +207,17 @@ def validation(m):
 """
 def train_model(m):
   print("Training processing...")
+
   # print the number of parameters in the model
   print(sum(p.numel() for p in m.parameters())/1e6, "M paramters")
 
+  # initizlize the model parameters
+  for p in m.parameters():
+     if p.dim() > 1:
+        torch.nn.init.xavier_uniform_(p)
+
   # create a PyTorch optimizer
-  optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate)
+  optimizer = torch.optim.AdamW(m.parameters(), lr=learning_rate, eps=1e-9, betas=(0.9, 0.98))
 
   # optimizer = ScheduledAdam(
   #           optim.Adam(m.parameters(), betas=(0.9, 0.98), eps=1e-9),
@@ -295,8 +300,9 @@ def train_model(m):
       test_src = torch.cat([test_src, padding])
 
       print("Go on. : ", es_sp.DecodeIds(m.generate(test_src, block_size).tolist()))
-      print("Go on. : ", es_sp.DecodeIds(m.beam_search(test_src, block_size, beam_length).tolist()))
+      # print("Go on. : ", es_sp.DecodeIds(m.beam_search(test_src, block_size, beam_length).tolist()))
 
+ 
 
   print(f"Training finished!")
 
