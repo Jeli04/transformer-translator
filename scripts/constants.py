@@ -28,7 +28,7 @@ validation_output_path = 'data/validation_data.txt'
 
 import sentencepiece as spm
 en_sp = spm.SentencePieceProcessor()
-en_sp.Load("models/sentencepiece_model_10k_english2.model")
+en_sp.Load("models/sp/sentencepiece_model_10k_english2.model")
 
 es_sp = spm.SentencePieceProcessor()
-es_sp.Load("models/sentencepiece_model_10k_spanish.model")
+es_sp.Load("models/sp/sentencepiece_model_10k_spanish.model")

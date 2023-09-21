@@ -134,11 +134,11 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-en_sp = spm.SentencePieceProcessor()
-en_sp.Load("models/sentencepiece_model_10k_english.model")
+# en_sp = spm.SentencePieceProcessor()
+# en_sp.Load("models/sentencepiece_model_10k_english.model")
 
-es_sp = spm.SentencePieceProcessor()
-es_sp.Load("models/sentencepiece_model_10k_spanish.model")
+# es_sp = spm.SentencePieceProcessor()
+# es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
 
 # split_data()

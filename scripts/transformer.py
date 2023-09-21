@@ -29,15 +29,15 @@ class Transformer(nn.Module):
 
         self.lm_head = nn.Linear(n_embed, vocab_size_y) # paramters are in_features, out_features
 
-    def display_attention(self, candidate, translation, attention):
-        """
+    """
         displays the model's attention over the source sentence for each target token generated.
         Args:
             candidate: (list) tokenized source tokens
             translation: (list) predicted target translation tokens
             attention: a tensor containing attentions scores
         Returns:
-        """
+    """
+    def display_attention(self, candidate, translation, attention):
         attention = attention.cpu().detach().numpy()
         # attention = [target length, source length]
 
@@ -139,18 +139,12 @@ class Transformer(nn.Module):
             output = softmax(self.lm_head(dec_output))
             output = torch.argmax(output, dim=-1) # (1, seq_len)
 
-            # print(res)
-
             last_word_id = output[0][i].item()
             # if last_word_id == 0:
                 # torch.set_printoptions(threshold=100_000)
                 # print(output.dtype)
                 # torch.set_printoptions(profile="default") # reset
 
-            # print(last_word_id)
-            # print(res[i])
-            
-            # print(last_word_id)
             target[0][i] = last_word_id
             target_len = i
 

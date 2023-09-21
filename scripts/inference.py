@@ -1,18 +1,12 @@
 from constants import *
 import torch
 import sentencepiece as spm
-from transformer import Transformer
+from transformer import *
 from torch.nn import functional as F
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 torch.cuda.set_device(0)
-
-en_sp = spm.SentencePieceProcessor()
-en_sp.Load("models/sentencepiece_model_10k_english2.model")
-
-es_sp = spm.SentencePieceProcessor()
-es_sp.Load("models/sentencepiece_model_10k_spanish.model")
 
 vocab_size_x = len(en_sp)
 vocab_size_y = len(es_sp)
