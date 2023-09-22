@@ -259,7 +259,7 @@ def train_model(m):
       train_losses.append(loss.item())
 
       # clears memory
-      del xb, yb, src_mask, trg_mask, output, loss
+      del xb, yb, yb_out, src_mask, trg_mask, output, loss
       gc.collect() 
       torch.cuda.empty_cache()
 
@@ -309,7 +309,6 @@ def train_model(m):
       # print("Go on. : ", es_sp.DecodeIds(m.beam_search(test_src, block_size, beam_length).tolist()))
 
  
-
   print(f"Training finished!")
 
       
@@ -318,26 +317,4 @@ vocab_size_y = len(es_sp)
 
 model = Transformer(n_embed, n_head, block_size, vocab_size_x, vocab_size_y, n_layer).to(device)
 train_model(model)
-
-# print(get_batch('train'))
-# x, y = get_batch('train')
-# print(en_sp.DecodeIds(x[0].tolist()[1:-1]))
-# print(es_sp.DecodeIds(y[0].tolist()[1:-1]))
-# print(len(x))
-# print(len(y))
-
-# tok_data = preprocessing.tokenize(preprocessing.split_data())
-# batched_data = get_batch(tok_data)
-# print(batched_data[0].shape)
-# print(batched_data[0])
-
-# sp = spm.SentencePieceProcessor()
-# sp.Load("models/sentencepiece_model.model")
-# ids = sp.EncodeAsIds(load_data()[0][0])
-
-# bos_id = sp.bos_id() # Get from model
-# eos_id = sp.eos_id()
-
-# ids = [bos_id] + ids + [eos_id]
-
-# print(ids)
+ 

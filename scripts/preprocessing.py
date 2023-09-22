@@ -137,34 +137,6 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-# en_sp = spm.SentencePieceProcessor()
-# en_sp.Load("models/sp/sentencepiece_model_10k_english2.model")
-
-# es_sp = spm.SentencePieceProcessor()
-# es_sp.Load("models/sp/sentencepiece_model_10k_spanish.model")
-
-
-# split_data()
-# test = CustomDataset(tokenize(create_pairs("data/training_data.txt"), en_sp, es_sp, 96)) # 0 is english
-# print(test.__getitem__(0))
-
-# enc = es_sp.EncodeAsIds("¿sabés por qué pasa?")
-# enc.insert(0, 1)
-# enc.append(2)
-
-# # Pad the list to size 96
-# desired_size = 96
-# if len(enc) < desired_size:
-#     padding = [0] * (desired_size - len(enc))
-#     enc = enc + padding
-
-# print(enc)
-# print(test[0][1].tolist())
-
-# for pair in test:
-#     if pair[1].tolist() == enc:
-#         print(pair[0])
-
 
 print(en_sp.DecodeIds([28,   34,    5,   11,   24,  134, 1021,    3]))
 print(es_sp.DecodeIds([8,  192, 1176,    4]))
