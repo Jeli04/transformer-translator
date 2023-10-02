@@ -2,6 +2,8 @@
 
 In this project, I recreated and trained the Transformer architecture from the famous "Attention Is All You Need" paper using Pytorch to translate English to Spanish. 
 
+The dataset I used for training the SentencePiece tokenizer and the transformer was the Tensorflow English-Spanish dataset "spa-eng".
+
 # Parameters and other Variables 
 | Configuration       | Value     |
 |---------------------|-----------|
