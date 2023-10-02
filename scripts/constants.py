@@ -19,7 +19,13 @@ translate_interval = 100
 warmup_steps = 1500
 beam_length = 5
 
+# sentence piece training 
+vocab_size = 10000
+model_type = 'unigram'  # Other options: 'bpe', 'char', 'word'
+
 # File paths
+raw_trg_file = "data/english_sentences.txt"
+raw_src_file = "data/spanish_sentences.txt"
 training_file = "data/training_data.txt"
 validation_file = "data/validation_data.txt"
 checkpoint_folder = "models/checkpoints/"

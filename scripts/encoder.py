@@ -14,7 +14,6 @@ class Encoder(nn.Module):
         super().__init__()
         self.n_embed = n_embed
         self.n_head = n_head
-        # self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size)))) # a buffer is a tensor in a PyTorch module that isn't a model parameter but still used in the module
 
         self.sa_heads = MultiHeadAttention(n_head, n_embed)
         self.ln1 = nn.LayerNorm(n_embed, eps=1e-6)

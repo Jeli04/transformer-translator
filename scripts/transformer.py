@@ -68,8 +68,6 @@ class Transformer(nn.Module):
         x_pos_enc = self.pos_enc(x_tok_emb)
         y_pos_enc = self.pos_enc(y_tok_emb)
         
-        # print("target shape: ", y_pos_enc.shape)
-
         enc_output = self.encoder_block(x_pos_enc, src_mask)
         dec_output, wei = self.decoder_block(y_pos_enc, enc_output, src_mask, target_mask,c_mask)
         # print("attention weight shape", wei.shape)

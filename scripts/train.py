@@ -2,11 +2,8 @@ from constants import *
 from transformer import Transformer
 import torch.optim as optim
 import preprocessing
-import sentencepiece as spm
 import torch
-import random
 import datetime
-import time
 import gc
 from tqdm import tqdm
 import sys
@@ -33,8 +30,6 @@ print(f"Name of current CUDA device:{torch.cuda.get_device_name(cuda_id)}")
 """
     Split and Tokenize Data
 """
-
-
 preprocessing.split_data() # split data into training and validation files
 
 training_dataset = preprocessing.CustomDataset(preprocessing.tokenize(preprocessing.create_pairs(training_file), en_sp, es_sp, block_size))
@@ -42,27 +37,6 @@ training_dataloader = DataLoader(training_dataset, batch_size=batch_size, shuffl
 
 validation_dataset = preprocessing.CustomDataset(preprocessing.tokenize(preprocessing.create_pairs(validation_file), en_sp, es_sp, block_size))
 validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-
-
-"""
-    estimate_loss 
-    code from Andrej Karpathy's minGPT
-"""
-@torch.no_grad()  # tells pytorch that everything inside this function wont have back propogation
-def estimate_loss():
-  out = {}
-  model.eval()
-  for split in ["train", "val"]:
-    losses = torch.zeros(eval_iters)
-    for k in range(eval_iters):
-       X, Y = get_batch(split)
-       src_mask, target_mask = create_mask(X, Y)
-       logits, loss = model(X, Y, src_mask, target_mask)
-       losses[k] = loss.item()
-    out[split] = losses.mean()
-  model.train()
-  return out
-
 
 
 """
@@ -115,10 +89,6 @@ def create_mask(src, target, seq_len=block_size):
   nopeak_mask = torch.tril(nopeak_mask).to(device)  # (1, L, L) to triangular shape
   d_mask = (d_mask & nopeak_mask)  # (B, L, L) padding false
 
-  # print("c_mask: ", c_mask.shape)
-  # print("e_mask: ", e_mask.shape)
-  # print("d_mask: ", d_mask.shape)
-
   return e_mask.to(device), d_mask.to(device), c_mask.to(device)
 
 
@@ -170,13 +140,6 @@ def validation(m):
       xb, yb, yb_out = xb.to(device), yb.to(device), yb_out.to(device) # moves to GPU if available
 
       src_mask, trg_mask, c_mask = create_mask(xb, yb)
-      # print("\n")
-      # print(en_sp.DecodeIds(xb[0].tolist()))
-      # print(xb[0])
-      # print(es_sp.DecodeIds(yb[0].tolist()))
-      # print(yb[0])
-      # print("src_mask: ", src_mask[0])
-      # print("trg_mask: ", trg_mask[0])
 
       # evaluate the loss
       output = m.forward(xb, yb, src_mask, trg_mask, c_mask)
